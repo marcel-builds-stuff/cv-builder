@@ -48,6 +48,9 @@ liegen. Fehlen sie, bleibt die Vorschau leer oder die Oberfläche ungestaltet.
   Deshalb regelmäßig mit `Speichern` sichern.
 - Foto und Unterschrift sind Teil der JSON-Datei. Behandle die Datei wie den
   Lebenslauf selbst.
+- Auf fremden oder gemeinsam genutzten Rechnern bleibt der Entwurf im Browser
+  zurück. Nach der Arbeit deshalb `Reset` klicken (überschreibt den Entwurf mit
+  den Beispieldaten) oder die Browserdaten löschen.
 
 ## Layouts
 
