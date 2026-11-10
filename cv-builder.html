@@ -1,0 +1,2574 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CV Builder</title>
+<link rel="stylesheet" href="styles/tokens.css">
+<link rel="stylesheet" href="styles/fonts.css">
+<link rel="stylesheet" href="styles/cv-builder.css">
+</head>
+<body>
+
+<script src="layouts/klassisch.js"></script>
+<script src="layouts/editorial.js"></script>
+<script src="layouts/medizinisch.js"></script>
+<script src="layouts/marginalie.js"></script>
+
+<header class="app-topbar">
+  <div class="app-topbar__product">
+    <h1 class="app-topbar__name">CV Builder</h1>
+    <div class="app-topbar__history">
+      <button id="btn-undo" onclick="undo()" class="hist-btn" title="Rückgängig (Ctrl+Z)" disabled>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>
+      </button>
+      <button id="btn-redo" onclick="redo()" class="hist-btn" title="Wiederholen (Ctrl+Y)" disabled>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7"/></svg>
+      </button>
+    </div>
+    <span id="save-status" class="app-topbar__status"></span>
+  </div>
+
+      <div class="action-row">
+        <button class="abtn pri" onclick="exportPDF()" title="PDF drucken / als PDF speichern (Ctrl+P)">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+          </svg>
+          PDF Export
+        </button>
+        <button class="abtn abtn-audit" onclick="openAtsModal()" title="Maschinenlesbarkeit &amp; ATS-Scoring prüfen">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            <path d="m9 12 2 2 4-4"/>
+          </svg>
+          ATS-Check
+        </button>
+        <button class="abtn abtn-util" onclick="exportJSON()" title="Lebenslauf als JSON-Datei speichern">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          Speichern
+        </button>
+        <button class="abtn abtn-util" onclick="document.getElementById('imp').click()" title="Gespeicherte JSON-Datei laden">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="17 8 12 3 7 8"/>
+            <line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+          Laden
+        </button>
+        <button class="abtn abtn-util abtn-reset" onclick="resetToDefaultExample()" title="Auf Beispiel-Lebenslauf zurücksetzen">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+            <path d="M3 3v5h5"/>
+          </svg>
+          Reset
+        </button>
+      </div>
+  <input type="file" id="imp" class="hidden" accept=".json" onchange="importJSON(event)">
+</header>
+
+<main id="app-main">
+  <div id="editor">
+    <div id="ed-body"></div>
+  </div>
+  <section id="pv-area" aria-label="Vorschau">
+    <div class="pv-toolbar" role="toolbar" aria-label="Darstellung des Lebenslaufs">
+      <div class="pv-toolbar__group">
+        <span class="pv-toolbar__label" id="lbl-layout">Layout</span>
+        <div id="layout-btns" class="seg-control" role="group" aria-labelledby="lbl-layout"></div>
+      </div>
+      <div class="pv-toolbar__group">
+        <span class="pv-toolbar__label" id="lbl-grp">Gruppierung</span>
+        <div class="seg-control" role="group" aria-labelledby="lbl-grp">
+          <button class="seg-btn on" data-grp="position" onclick="setGrouping('position')">Nach Positionen</button>
+          <button class="seg-btn" data-grp="company" onclick="setGrouping('company')">Nach Firmen</button>
+        </div>
+      </div>
+    </div>
+    <!-- Preview panel with paginated pages -->
+    <div id="pv-panel"></div>
+  </section>
+</main>
+
+<!-- Hidden measurement container -->
+<div id="cv-measure" class="cv-root"></div>
+
+<!-- ATS Validation & Preview Modal -->
+<div id="ats-modal" onclick="if(event.target===this) closeAtsModal()">
+  <div class="ats-box">
+    <!-- Header -->
+    <div class="ats-head">
+      <div class="ats-head-left">
+        <div class="ats-head-icon" aria-hidden="true">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            <path d="m9 12 2 2 4-4"/>
+          </svg>
+        </div>
+        <div class="ats-head-titles">
+          <h2>ATS-Check &amp; Recruiter-Audit</h2>
+          <p>Maschinenlesbarkeit &amp; Content-Qualität (Prüfregeln, kein echter ATS-Parser)</p>
+        </div>
+      </div>
+      <button class="ats-close" onclick="closeAtsModal()" title="Schließen" aria-label="Schließen">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+
+    <!-- Tabs -->
+    <div class="ats-tabs">
+      <button class="ats-tab on" id="tab-btn-tech" onclick="switchAtsTab('tech')">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="m9 12 2 2 4-4"/></svg>
+        Technischer ATS-Check
+        <span class="ats-tab-pill" id="tech-score-num">6/6</span>
+      </button>
+      <button class="ats-tab" id="tab-btn-content" onclick="switchAtsTab('content')">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+        Recruiter-Score &amp; Zahlen
+        <span class="ats-tab-pill" id="content-score-num">2/4</span>
+      </button>
+      <button class="ats-tab" id="tab-btn-stream" onclick="switchAtsTab('stream')">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+        Extrahierter Text-Stream
+      </button>
+    </div>
+
+    <!-- Body -->
+    <div class="ats-body">
+      <!-- TAB 1: TECHNICAL ATS -->
+      <div id="ats-tab-panel-tech" class="ats-tab-panel">
+        <div id="ats-tech-badge" class="ats-badge success"></div>
+        <div>
+          <div class="ats-section-label">Technische Prüfregeln für die Maschinenlesbarkeit</div>
+          <div id="ats-tech-checklist" class="ats-checks"></div>
+        </div>
+      </div>
+
+      <!-- TAB 2: RECRUITER & CONTENT SCORE -->
+      <div id="ats-tab-panel-content" class="ats-tab-panel" style="display:none;">
+        <div id="ats-content-badge" class="ats-badge warning"></div>
+        <div>
+          <div class="ats-section-label">Qualitäts- &amp; Scoring-Kriterien (Wirkung, messbare Erfolge, Lesbarkeit)</div>
+          <div id="ats-content-checklist" class="ats-checks"></div>
+        </div>
+      </div>
+
+      <!-- TAB 3: EXTRACTED TEXT STREAM -->
+      <div id="ats-tab-panel-stream" class="ats-tab-panel" style="display:none;">
+        <div class="ats-stream-head">
+          <div>
+            <div style="font-size: 13px; font-weight: 600; color: var(--ui-color-text);">Extrahierter Text-Stream (Parser-Rohdaten)</div>
+            <div style="font-size: 11.5px; color: var(--ui-color-text-muted); margin-top: 1px;">Textinhalt der Vorschau in Lesereihenfolge. Im Chrome-PDF-Export erscheint derselbe Text einmal pro Eintrag; echte Parser können mehrspaltige Bereiche anders ordnen.</div>
+          </div>
+          <button class="ats-copy-btn" id="btn-copy-ats" onclick="copyAtsText()">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            Text kopieren
+          </button>
+        </div>
+        <pre id="ats-raw-stream" class="ats-pre"></pre>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="ats-foot">
+      <div class="ats-foot-info">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+        <span>Einfache Prüfregeln auf dem Textinhalt. Ersetzt keinen Test mit einem echten Bewerbermanagementsystem.</span>
+      </div>
+      <button class="ats-btn-close" onclick="closeAtsModal()">Schließen</button>
+    </div>
+  </div>
+</div>
+
+<style id="cv-layout-style"></style>
+<input type="file" id="photo-input" class="hidden" accept="image/*" onchange="handlePhotoUpload(event,'photo')">
+<input type="file" id="sig-input" class="hidden" accept="image/*" onchange="handlePhotoUpload(event,'signature')">
+
+<script>
+// ═══════════════════════════════════════
+// PLACEHOLDER DATA
+// ═══════════════════════════════════════
+var DEFAULT_CV_DATA = {
+  photo: '',
+  signature: '',
+  signatureLocation: 'Berlin',
+  personal: {
+    name: 'Mustermann, Max',
+    title: '',
+    highlight: '',
+    birthdate: '15.06.1990 in Berlin',
+    address: 'Musterstraße 42\n10115 Berlin',
+    phone: '0170/1234567',
+    email: 'max.mustermann@email.de',
+    linkedin: ''
+  },
+  experience: [
+    { id:1, company:'Muster AG', entity:'Digital Solutions GmbH', role:'Senior Consultant', period:'seit 01/2023', tasks:['Beratung und Implementierung von ERP-Systemen','Leitung von Migrationsprojekten','Stakeholder-Management und Anforderungsanalyse'] },
+    { id:2, company:'Muster AG', entity:'Consulting Services', role:'Consultant', period:'06/2020 - 12/2022', tasks:['Prozessoptimierung in verschiedenen Fachbereichen','Durchführung von Workshops und Schulungen'] },
+    { id:3, company:'Beispiel GmbH', entity:'', role:'Junior Berater', period:'01/2018 - 05/2020', tasks:['Unterstützung bei der Systemimplementierung','Erstellung von Dokumentationen und Testfällen'] }
+  ],
+  education: [
+    { id:1, institution:'Technische Universität Berlin', degree:'M.Sc. Wirtschaftsinformatik', period:'2015 - 2018' },
+    { id:2, institution:'Freie Universität Berlin', degree:'B.Sc. Betriebswirtschaftslehre', period:'2011 - 2015' }
+  ],
+  skills: {
+    languages: 'Deutsch: Muttersprache\nEnglisch: Verhandlungssicher',
+    technical: 'SAP S/4HANA: Fortgeschritten\nMS Office: Experte\nSQL: Grundkenntnisse',
+    other: 'Führerschein Klasse B'
+  },
+  certificates: [],
+  projects: [],
+  volunteer: []
+};
+
+var nextId = 100;
+var cvData = normalizeCVData(JSON.parse(JSON.stringify(DEFAULT_CV_DATA)));
+
+var currentLayout = 'klassisch';
+var grouping = 'position';
+var outputLang = 'de';
+var customStyle = { accentColor: '', fontFamily: '', fontSize: '', outputLang: 'de' }; // empty = use layout default
+var openSections = { photos: true, style: false, personal: false, experience: false, education: false, skills: false, certificates: false, projects: false, volunteer: false };
+var editingExp = null, editingEdu = null, editingCert = null, editingProj = null, editingVol = null;
+
+// Drag & Drop state
+var dragSection = null, dragIdx = null;
+
+// ═══════════════════════════════════════
+// ICONS
+// ═══════════════════════════════════════
+var ICONS = {
+  name:'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
+  birth:'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>',
+  address:'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>',
+  phone:'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>',
+  email:'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>',
+  linkedin:'<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M19 3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14m-.5 15.5v-5.3a3.26 3.26 0 0 0-3.26-3.26c-.85 0-1.84.52-2.28 1.3v-1.11h-2.79v8.37h2.79v-4.93c0-.77.62-1.4 1.39-1.4a1.4 1.4 0 0 1 1.4 1.4v4.93h2.75M6.46 10.9v8.37H9.2V10.9H6.46M7.83 6.45a1.67 1.67 0 1 0 0 3.34 1.67 1.67 0 0 0 0-3.34Z"/></svg>'
+};
+
+// ═══════════════════════════════════════
+// HELPERS
+// ═══════════════════════════════════════
+function esc(s) { var d=document.createElement('div'); d.textContent=s||''; return d.innerHTML; }
+
+function escAttr(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g, '&amp;')
+                  .replace(/"/g, '&quot;')
+                  .replace(/'/g, '&#39;')
+                  .replace(/</g, '&lt;')
+                  .replace(/>/g, '&gt;');
+}
+
+function sanitizeImage(src) {
+  if (!src) return '';
+  var clean = src.trim();
+  var match = /^data:image\/(png|jpeg|jpg|webp);base64,([A-Za-z0-9+/=]+)$/i.exec(clean);
+  if (!match) return '';
+  return clean;
+}
+
+function asText(value) {
+  if (value === undefined || value === null) return '';
+  return typeof value === 'string' ? value : String(value);
+}
+
+function asTextArray(value) {
+  var source = Array.isArray(value) ? value : (typeof value === 'string' ? value.split(/\r?\n/) : []);
+  return source.map(function(item) { return asText(item).trim(); }).filter(function(item) { return item; });
+}
+
+function normalizeCVData(data) {
+  var d = data && typeof data === 'object' && !Array.isArray(data) ? data : {};
+
+  if (!d.personal || typeof d.personal !== 'object' || Array.isArray(d.personal)) d.personal = {};
+  var personalFields = ['name', 'title', 'highlight', 'birthdate', 'address', 'phone', 'email', 'linkedin'];
+  for (var p = 0; p < personalFields.length; p++) {
+    var personalField = personalFields[p];
+    d.personal[personalField] = asText(d.personal[personalField]);
+  }
+
+  d.photo = sanitizeImage(asText(d.photo));
+  d.signature = sanitizeImage(asText(d.signature));
+  d.signatureLocation = asText(d.signatureLocation);
+
+  d.experience = Array.isArray(d.experience) ? d.experience : [];
+  for (var e = 0; e < d.experience.length; e++) {
+    var exp = d.experience[e];
+    if (!exp || typeof exp !== 'object' || Array.isArray(exp)) exp = d.experience[e] = {};
+    exp.company = asText(exp.company);
+    exp.entity = asText(exp.entity);
+    exp.role = asText(exp.role);
+    exp.period = asText(exp.period);
+    exp.tasks = asTextArray(exp.tasks);
+  }
+
+  d.education = Array.isArray(d.education) ? d.education : [];
+  for (var ed = 0; ed < d.education.length; ed++) {
+    var edu = d.education[ed];
+    if (!edu || typeof edu !== 'object' || Array.isArray(edu)) edu = d.education[ed] = {};
+    edu.institution = asText(edu.institution);
+    edu.degree = asText(edu.degree);
+    edu.period = asText(edu.period);
+  }
+
+  if (!d.skills || typeof d.skills !== 'object' || Array.isArray(d.skills)) d.skills = {};
+  d.skills.languages = asText(d.skills.languages);
+  d.skills.technical = asText(d.skills.technical);
+  d.skills.other = asText(d.skills.other);
+
+  d.certificates = Array.isArray(d.certificates) ? d.certificates : [];
+  for (var ci = 0; ci < d.certificates.length; ci++) {
+    var cert = d.certificates[ci];
+    if (!cert || typeof cert !== 'object' || Array.isArray(cert)) cert = d.certificates[ci] = {};
+    cert.name = asText(cert.name);
+    cert.issuer = asText(cert.issuer);
+    cert.date = asText(cert.date);
+    cert.details = asText(cert.details);
+  }
+  d.projects = Array.isArray(d.projects) ? d.projects : [];
+  for (var pr = 0; pr < d.projects.length; pr++) {
+    var project = d.projects[pr];
+    if (!project || typeof project !== 'object' || Array.isArray(project)) project = d.projects[pr] = {};
+    project.name = asText(project.name);
+    project.role = asText(project.role);
+    project.period = asText(project.period);
+    project.tasks = asTextArray(project.tasks);
+  }
+  d.volunteer = Array.isArray(d.volunteer) ? d.volunteer : [];
+  for (var vi = 0; vi < d.volunteer.length; vi++) {
+    if (!d.volunteer[vi] || typeof d.volunteer[vi] !== 'object' || Array.isArray(d.volunteer[vi])) d.volunteer[vi] = {};
+  }
+
+  ensureUniqueIds(d);
+  return d;
+}
+
+// Editor actions find entries by id, so ids must be unique within each list.
+// nextId restarts on every page load; raise it above all stored ids and
+// re-number missing or duplicate ids left by earlier sessions.
+function ensureUniqueIds(d) {
+  var sections = ['experience', 'education', 'certificates', 'projects', 'volunteer'];
+  var maxId = 0;
+  sections.forEach(function(sec) {
+    d[sec].forEach(function(item) {
+      if (typeof item.id === 'number' && isFinite(item.id) && item.id > maxId) maxId = item.id;
+    });
+  });
+  if (nextId <= maxId) nextId = Math.floor(maxId) + 1;
+  sections.forEach(function(sec) {
+    var seen = {};
+    d[sec].forEach(function(item) {
+      if (typeof item.id !== 'number' || !isFinite(item.id) || seen[item.id]) item.id = nextId++;
+      seen[item.id] = true;
+    });
+  });
+}
+
+function resizeAndSanitizeImage(file, field, callback) {
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    var img = new Image();
+    img.onload = function() {
+      var canvas = document.createElement('canvas');
+      var maxW = field === 'photo' ? 400 : 300;
+      var maxH = field === 'photo' ? 550 : 150;
+      
+      var w = img.width;
+      var h = img.height;
+      var ratio = Math.min(maxW / w, maxH / h);
+      if (ratio < 1) {
+        w = Math.round(w * ratio);
+        h = Math.round(h * ratio);
+      }
+      
+      canvas.width = w;
+      canvas.height = h;
+      var ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, w, h);
+      
+      var format = field === 'signature' ? 'image/png' : 'image/jpeg';
+      var quality = 0.8;
+      var dataURL = canvas.toDataURL(format, quality);
+      callback(dataURL);
+    };
+    img.onerror = function() {
+      callback('');
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function companyDisplay(exp) {
+  if (exp.entity && exp.entity.trim()) return exp.company + ' - ' + exp.entity;
+  return exp.company;
+}
+
+function groupByCompany(exps) {
+  var groups=[], map={};
+  for (var i=0; i<exps.length; i++) {
+    var e=exps[i], key=e.company;
+    if (!map[key]) { map[key]={company:key, positions:[]}; groups.push(map[key]); }
+    map[key].positions.push(e);
+  }
+  return groups;
+}
+
+// ═══════════════════════════════════════
+// I18N / TRANSLATIONS (OUTPUT ONLY)
+// ═══════════════════════════════════════
+var I18N = {
+  de: {
+    cv_title: 'LEBENSLAUF',
+    personal_details: 'PERSÖNLICHE DATEN',
+    name: 'Name',
+    birthdate: 'Geburtsdaten',
+    address: 'Adresse',
+    phone: 'Telefon',
+    email: 'E-Mail',
+    experience_upper: 'BERUFSERFAHRUNG',
+    experience: 'Berufserfahrung',
+    education_upper: 'AUSBILDUNG',
+    education: 'Ausbildung',
+    skills_interests_upper: 'KENNTNISSE & INTERESSEN',
+    skills: 'Kenntnisse',
+    technical_skills: 'Fachkenntnisse',
+    languages: 'Sprachen',
+    other: 'Sonstiges',
+    certificates: 'ZERTIFIKATE',
+    projects: 'PROJEKTE',
+    volunteer: 'EHRENAMT',
+    qualification_profile: 'Qualifikationsprofil',
+    short_profile: 'Kurzprofil',
+    page: 'Seite',
+    of: 'von',
+    since: 'seit ',
+    present: 'heute',
+    signature_alt: 'Unterschrift'
+  },
+  en: {
+    cv_title: 'CURRICULUM VITAE',
+    personal_details: 'PERSONAL DETAILS',
+    name: 'Name',
+    birthdate: 'Date of Birth',
+    address: 'Address',
+    phone: 'Phone',
+    email: 'Email',
+    experience_upper: 'WORK EXPERIENCE',
+    experience: 'Work Experience',
+    education_upper: 'EDUCATION',
+    education: 'Education',
+    skills_interests_upper: 'SKILLS & INTERESTS',
+    skills: 'Skills',
+    technical_skills: 'Technical Skills',
+    languages: 'Languages',
+    other: 'Other',
+    certificates: 'CERTIFICATES',
+    projects: 'PROJECTS',
+    volunteer: 'VOLUNTEER EXPERIENCE',
+    qualification_profile: 'Professional Profile',
+    short_profile: 'Executive Summary',
+    page: 'Page',
+    of: 'of',
+    since: 'since ',
+    present: 'present',
+    signature_alt: 'Signature'
+  }
+};
+
+var LANG_NAME_MAP = {
+  'deutsch': 'German',
+  'german': 'German',
+  'englisch': 'English',
+  'english': 'English',
+  'französisch': 'French',
+  'french': 'French',
+  'spanisch': 'Spanish',
+  'spanish': 'Spanish',
+  'italienisch': 'Italian',
+  'italian': 'Italian',
+  'russisch': 'Russian',
+  'russian': 'Russian',
+  'chinesisch': 'Chinese',
+  'chinese': 'Chinese',
+  'japanisch': 'Japanese',
+  'japanese': 'Japanese',
+  'polnisch': 'Polish',
+  'polish': 'Polish',
+  'niederländisch': 'Dutch',
+  'dutch': 'Dutch',
+  'portugiesisch': 'Portuguese',
+  'portuguese': 'Portuguese',
+  'arabisch': 'Arabic',
+  'arabic': 'Arabic',
+  'türkisch': 'Turkish',
+  'turkish': 'Turkish',
+  'ukrainisch': 'Ukrainian',
+  'ukrainian': 'Ukrainian'
+};
+
+var LEVEL_NAME_MAP = {
+  'muttersprache': 'Native speaker',
+  'muttersprachlich': 'Native proficiency',
+  'verhandlungssicher': 'Full professional proficiency',
+  'fließend': 'Fluent',
+  'fließend in wort und schrift': 'Fluent (spoken & written)',
+  'gut': 'Good',
+  'gute kenntnisse': 'Good working knowledge',
+  'grundkenntnisse': 'Basic knowledge',
+  'grundlegend': 'Basic knowledge',
+  'experte': 'Expert',
+  'sehr gut': 'Very good',
+  'fortgeschritten': 'Advanced',
+  'fortgeschrittene kenntnisse': 'Advanced'
+};
+
+function t(key, lang) {
+  var l = lang || outputLang || 'de';
+  if (I18N[l] && I18N[l][key]) return I18N[l][key];
+  if (I18N.de[key]) return I18N.de[key];
+  return key;
+}
+
+function formatPeriod(period, lang) {
+  if (!period) return '';
+  var l = lang || outputLang || 'de';
+  var s = String(period);
+  if (l === 'en') {
+    s = s.replace(/^seit\s+/i, 'since ');
+    s = s.replace(/\bheute\b/gi, 'present');
+    s = s.replace(/\bbis\s+heute\b/gi, 'to present');
+  } else if (l === 'de') {
+    s = s.replace(/^since\s+/i, 'seit ');
+    s = s.replace(/\bpresent\b/gi, 'heute');
+    s = s.replace(/\bto\s+present\b/gi, 'bis heute');
+  }
+  return s;
+}
+
+function translateLangName(name) {
+  if (!name) return '';
+  var clean = name.trim();
+  var lower = clean.toLowerCase();
+  return LANG_NAME_MAP[lower] || clean;
+}
+
+function translateLevel(level) {
+  if (!level) return '';
+  var clean = level.trim();
+  var lower = clean.toLowerCase();
+  return LEVEL_NAME_MAP[lower] || clean;
+}
+
+function translateSkillList(str, lang) {
+  var l = lang || outputLang || 'de';
+  if (!str || l !== 'en') return str;
+  var lines = str.split(/\r?\n/);
+  var mapped = lines.map(function(line) {
+    var colon = line.indexOf(':');
+    if (colon < 0) return line;
+    var name = line.slice(0, colon).trim();
+    var val = line.slice(colon + 1).trim();
+    var trName = translateLangName(name);
+    var trVal = translateLevel(val);
+    return trName + ': ' + trVal;
+  });
+  return mapped.join('\n');
+}
+
+function formatSkillBadge(levelText, inParens) {
+  var t = levelText.trim();
+  var lower = t.toLowerCase();
+  var type = 'adv';
+  if (/expert|muttersprache|native|c2|sehr gut|fluent|verhandlungssicher/i.test(lower)) {
+    type = 'expert';
+  } else if (/grund|basic|a1|a2/i.test(lower)) {
+    type = 'basic';
+  }
+  var content = inParens ? ('(' + esc(t) + ')') : esc(t);
+  return '<span class="cv-sk-badge cv-sk-badge-' + type + '">' + content + '</span>';
+}
+
+function formatSkillValue(val) {
+  if (!val) return '';
+  var trimmed = val.trim();
+  var pureLevelRegex = /^(Experte|Expert|Fortgeschritten|Advanced|Grundkenntnisse|Basic(\s+knowledge)?|Gute Kenntnisse|Good(\s+knowledge)?|Muttersprache|Native(\s+speaker)?|Verhandlungssicher(\s*\/\s*C[12])?|Fluent|Flie\u00dfend|Conversational|C1|C2|B1|B2|A1|A2)$/i;
+  if (pureLevelRegex.test(trimmed)) {
+    return formatSkillBadge(trimmed, false);
+  }
+
+  var escaped = esc(val);
+  var inParensRegex = /\s*\((Experte|Expert|Fortgeschritten|Advanced|Grundkenntnisse|Basic(\s+knowledge)?|Gute Kenntnisse|Good(\s+knowledge)?|Muttersprache|Native(\s+speaker)?|Verhandlungssicher(\s*\/\s*C[12])?|Fluent|Flie\u00dfend|Conversational|C1|C2|B1|B2|A1|A2)\)/gi;
+  escaped = escaped.replace(inParensRegex, function(m, p1) {
+    return ' ' + formatSkillBadge(p1, true);
+  });
+  return escaped;
+}
+
+function formatSkillLine(line, lang) {
+  if (!line) return '';
+  var trimmed = line.trim();
+  if (!trimmed) return '';
+  var colonIdx = trimmed.indexOf(':');
+  if (colonIdx > 0) {
+    var key = trimmed.slice(0, colonIdx).trim();
+    var val = trimmed.slice(colonIdx + 1).trim();
+    return '<strong class="cv-sk-key">' + esc(key) + ':</strong> <span class="cv-sk-val">' + formatSkillValue(val) + '</span>';
+  }
+  return '<span class="cv-sk-val">' + formatSkillValue(trimmed) + '</span>';
+}
+
+function formatSkills(str, lang) {
+  if (!str) return '';
+  var l = lang || outputLang || 'de';
+  var translated = (typeof translateSkillList === 'function') ? translateSkillList(str, l) : str;
+  var lines = String(translated).split(/\r?\n/);
+  var out = [];
+
+  for (var i = 0; i < lines.length; i++) {
+    var line = lines[i].trim();
+    if (!line) continue;
+    out.push('<div class="cv-sk-item">' + formatSkillLine(line, l) + '</div>');
+  }
+
+  return out.join('');
+}
+
+function setOutputLang(lang) {
+  outputLang = (lang === 'en') ? 'en' : 'de';
+  customStyle.outputLang = outputLang;
+  renderAll();
+  saveToLocalStorage();
+}
+
+function companyPeriod(positions, lang) {
+  var l = lang || outputLang || 'de';
+  var first = positions[positions.length - 1].period;
+  var last = positions[0].period;
+  var start = first.indexOf(' - ') >= 0 ? first.split(' - ')[0] : first.replace(/^(seit|since)\s+/i, '');
+  start = formatPeriod(start, l);
+  var sinceWord = (l === 'en') ? 'since ' : 'seit ';
+  if (last.indexOf('seit ') === 0 || last.indexOf('since ') === 0) return sinceWord + start;
+  var end = last.indexOf(' - ') >= 0 ? last.split(' - ')[1] : last;
+  end = formatPeriod(end, l);
+  return start + ' - ' + end;
+}
+
+function todayStr(lang) {
+  var l = lang || outputLang || 'de';
+  var d = new Date();
+  if (l === 'en') {
+    var months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    return months[d.getMonth()] + ' ' + d.getDate() + ', ' + d.getFullYear();
+  }
+  return String(d.getDate()).padStart(2,'0') + '.' + String(d.getMonth() + 1).padStart(2,'0') + '.' + d.getFullYear();
+}
+
+function renderExperience(data, grp, lang) {
+  var l = lang || outputLang || 'de';
+  var out = '';
+  if (grp === 'position') {
+    for (var i = 0; i < data.experience.length; i++) {
+      var exp = data.experience[i];
+      out += '<article class="cv-entry"><div class="cv-entry-left">' + esc(formatPeriod(exp.period, l)) + '</div><div class="cv-entry-right"><h3 class="cv-entry-main">' + esc(companyDisplay(exp)) + '</h3><div class="cv-entry-sub">' + esc(exp.role) + '</div><ul class="cv-entry-ul">';
+      for (var t = 0; t < exp.tasks.length; t++) out += '<li>' + esc(exp.tasks[t]) + '</li>';
+      out += '</ul></div></article>';
+    }
+  } else {
+    var groups = groupByCompany(data.experience);
+    for (var g = 0; g < groups.length; g++) {
+      var grpD = groups[g], per = companyPeriod(grpD.positions, l);
+      out += '<section class="cv-cg"><div class="cv-cg-head"><div class="cv-cg-left">' + esc(per) + '</div><div class="cv-cg-right"><h3 class="cv-cg-name">' + esc(grpD.company) + '</h3></div></div>';
+      out += '<div class="cv-cg-positions">';
+      for (var p = 0; p < grpD.positions.length; p++) {
+        var pos = grpD.positions[p];
+        var rl = pos.role;
+        if (pos.entity && pos.entity.trim()) rl = pos.entity + ' – ' + pos.role;
+        out += '<article class="cv-sub"><div class="cv-sub-head"><h4 class="cv-sub-role">' + esc(rl) + '</h4><div class="cv-sub-period">' + esc(formatPeriod(pos.period, l)) + '</div></div><ul class="cv-sub-ul">';
+        for (var t2 = 0; t2 < pos.tasks.length; t2++) out += '<li>' + esc(pos.tasks[t2]) + '</li>';
+        out += '</ul></article>';
+      }
+      out += '</div></section>';
+    }
+  }
+  return out;
+}
+
+function renderSignature(data, lang) {
+  if (!data.signature && !data.signatureLocation) return '';
+  var l = lang || outputLang || 'de';
+  var dateStr = todayStr(l);
+  var loc = esc(data.signatureLocation || '');
+  var locDate = '';
+  if (l === 'en') {
+    locDate = loc ? (loc + ', ' + dateStr) : dateStr;
+  } else {
+    locDate = (loc ? (loc + ', den ') : '') + dateStr;
+  }
+  var altText = t('signature_alt', l);
+  var out = '<div class="cv-sig-block"><div class="cv-sig-location">' + locDate + '</div>';
+  if (data.signature) out += '<img class="cv-sig-img" src="' + escAttr(data.signature) + '" alt="' + escAttr(altText) + '">';
+  return out + '</div>';
+}
+
+function renderOptionalSections(data, lang) {
+  var l = lang || outputLang || 'de';
+  var out = '';
+
+  // Certificates
+  if (data.certificates && data.certificates.length > 0) {
+    out += '<h2 class="cv-sh"><span class="sr-only">Certificates &amp; Training / </span>' + esc(t('certificates', l)) + '</h2><div class="cv-sh-line" aria-hidden="true"></div>';
+    for (var c = 0; c < data.certificates.length; c++) {
+      var cert = data.certificates[c];
+      out += '<article class="cv-entry"><div class="cv-entry-left">' + esc(formatPeriod(cert.date, l)) + '</div>';
+      out += '<div class="cv-entry-right"><h3 class="cv-entry-main">' + esc(cert.name) + '</h3>';
+      if (cert.issuer) out += '<div class="cv-entry-sub">' + esc(cert.issuer) + '</div>';
+      if (cert.details && cert.details.trim()) {
+        var lines = cert.details.split('\n').map(function(s){return s.trim();}).filter(function(s){return s;});
+        var introLines = [];
+        var bulletLines = [];
+        for (var li = 0; li < lines.length; li++) {
+          if (/^[-•*]\s*/.test(lines[li])) {
+            bulletLines.push(lines[li].replace(/^[-•*]\s*/, ''));
+          } else if (bulletLines.length === 0 && lines.length > 1 && lines.some(function(l){ return /^[-•*]\s*/.test(l); })) {
+            introLines.push(lines[li]);
+          } else if (lines.length === 1) {
+            introLines.push(lines[li]);
+          } else {
+            bulletLines.push(lines[li]);
+          }
+        }
+        for (var il = 0; il < introLines.length; il++) {
+          out += '<div class="cv-entry-sub" style="margin-top:2px; font-weight:600; color:#333;">' + esc(introLines[il]) + '</div>';
+        }
+        if (bulletLines.length > 0) {
+          out += '<ul class="cv-entry-ul">';
+          for (var bl = 0; bl < bulletLines.length; bl++) {
+            out += '<li>' + esc(bulletLines[bl]) + '</li>';
+          }
+          out += '</ul>';
+        }
+      }
+      out += '</div></article>';
+    }
+  }
+
+  // Projects
+  if (data.projects && data.projects.length > 0) {
+    out += '<h2 class="cv-sh"><span class="sr-only">Projects / </span>' + esc(t('projects', l)) + '</h2><div class="cv-sh-line" aria-hidden="true"></div>';
+    for (var p = 0; p < data.projects.length; p++) {
+      var proj = data.projects[p];
+      out += '<article class="cv-entry"><div class="cv-entry-left">' + esc(formatPeriod(proj.period, l)) + '</div>';
+      out += '<div class="cv-entry-right"><h3 class="cv-entry-main">' + esc(proj.name) + '</h3>';
+      if (proj.role) out += '<div class="cv-entry-sub">' + esc(proj.role) + '</div>';
+      if (proj.tasks && proj.tasks.length > 0) {
+        out += '<ul class="cv-entry-ul">';
+        for (var tIdx = 0; tIdx < proj.tasks.length; tIdx++) out += '<li>' + esc(proj.tasks[tIdx]) + '</li>';
+        out += '</ul>';
+      }
+      out += '</div></article>';
+    }
+  }
+
+  // Volunteer
+  if (data.volunteer && data.volunteer.length > 0) {
+    out += '<h2 class="cv-sh"><span class="sr-only">Volunteering / </span>' + esc(t('volunteer', l)) + '</h2><div class="cv-sh-line" aria-hidden="true"></div>';
+    for (var v = 0; v < data.volunteer.length; v++) {
+      var vol = data.volunteer[v];
+      out += '<article class="cv-entry"><div class="cv-entry-left">' + esc(formatPeriod(vol.period, l)) + '</div>';
+      out += '<div class="cv-entry-right"><h3 class="cv-entry-main">' + esc(vol.org) + '</h3>';
+      if (vol.role) out += '<div class="cv-entry-sub">' + esc(vol.role) + '</div>';
+      out += '</div></article>';
+    }
+  }
+
+  return out;
+}
+
+// ═══════════════════════════════════════
+// ATS VALIDATION & TEXT EXTRACTION
+// ═══════════════════════════════════════
+function extractAtsText() {
+  var measure = document.getElementById('cv-measure');
+  if (!measure) return '';
+  var clone = measure.cloneNode(true);
+  
+  // Remove decorative and non-text elements
+  var decos = clone.querySelectorAll('[aria-hidden="true"], .cv-deco-geo, .cv-deco-top, .cv-sh-line, .cv-photo, .cv-sig-img, svg');
+  decos.forEach(function(el) { el.remove(); });
+  
+  var lines = [];
+  function walk(node) {
+    if (node.nodeType === 3) { // TEXT_NODE
+      var txt = node.textContent.trim();
+      if (txt) lines.push(txt);
+    } else if (node.nodeType === 1) { // ELEMENT_NODE
+      var tag = node.tagName.toLowerCase();
+      var isBlock = ['div', 'p', 'h1', 'h2', 'h3', 'h4', 'li', 'article', 'section', 'tr'].indexOf(tag) >= 0;
+      if (tag === 'td' || tag === 'th') {
+        lines.push(' ');
+      }
+      if (tag === 'li') {
+        var liTxt = node.textContent.trim();
+        if (liTxt) {
+          lines.push('• ' + liTxt);
+          lines.push('__NL__');
+          return;
+        }
+      }
+      for (var i = 0; i < node.childNodes.length; i++) {
+        walk(node.childNodes[i]);
+      }
+      if (isBlock) lines.push('__NL__');
+    }
+  }
+  walk(clone);
+  
+  return lines.join(' ')
+    .replace(/\s*__NL__\s*/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function runAtsAudit(extractedText) {
+  var text = extractedText || '';
+  var tech = [];
+  var recruiter = [];
+
+  // ═══════════════════════════════════════
+  // 1. TECHNISCHER ATS-CHECK (Maschinenlesbarkeit)
+  // ═══════════════════════════════════════
+  
+  // A. Bewerbername & Identifikation
+  var name = (cvData.personal && cvData.personal.name) ? cvData.personal.name.trim() : '';
+  var nameParts = name.replace(/[,.\s]+/g, ' ').split(' ').filter(Boolean);
+  var hasName = nameParts.length > 0 && nameParts.every(function(part) {
+    return text.toLowerCase().indexOf(part.toLowerCase()) >= 0;
+  });
+  tech.push({
+    title: 'Bewerbername &amp; Identifikation',
+    pass: !!hasName,
+    desc: hasName ? 'Name („' + esc(name) + '“) sauber im Kopfbereich des Textstroms gefunden.' : 'Bewerbername fehlt oder ist nicht lesbar.'
+  });
+
+  // B. Kontaktdaten & LinkedIn
+  var email = (cvData.personal && cvData.personal.email) ? cvData.personal.email.trim() : '';
+  var emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/;
+  var hasEmail = email && emailRegex.test(email) && text.indexOf(email) >= 0;
+
+  var phone = (cvData.personal && cvData.personal.phone) ? cvData.personal.phone.trim() : '';
+  var hasPhone = phone && text.indexOf(phone) >= 0;
+
+  var linkedin = (cvData.personal && cvData.personal.linkedin) ? cvData.personal.linkedin.trim() : '';
+  var hasLinkedin = linkedin && linkedin.length > 4;
+
+  var contactPass = hasEmail && hasPhone && hasLinkedin;
+  var contactDesc = '';
+  if (contactPass) {
+    contactDesc = 'E-Mail, Telefon und LinkedIn sind im Lebenslauf hinterlegt.';
+  } else {
+    var missing = [];
+    if (!hasEmail) missing.push('E-Mail');
+    if (!hasPhone) missing.push('Telefonnummer');
+    if (!hasLinkedin) missing.push('LinkedIn-Link');
+    contactDesc = 'Fehlende oder unvollständige Angaben: ' + missing.join(', ') + '. Fügen Sie besonders eine LinkedIn-URL hinzu.';
+  }
+  tech.push({
+    title: 'Vollständige Kontaktdaten (inkl. LinkedIn)',
+    pass: contactPass,
+    desc: contactDesc
+  });
+
+  // C. Standard-Sektionsheader (DE & EN Auffindbarkeit)
+  var hasExpHeader = /experience|berufserfahrung|werdegang/i.test(text);
+  var hasEduHeader = /education|ausbildung/i.test(text);
+  var hasSkillsHeader = /skills|kenntnisse|kompetenz|languages|sprachen/i.test(text);
+  var headersPass = hasExpHeader && hasEduHeader && hasSkillsHeader;
+  tech.push({
+    title: 'Standard-Sektionsheader (DE &amp; EN)',
+    pass: headersPass,
+    desc: headersPass ? 'Alle Kernabschnitte (Erfahrung, Ausbildung, Kenntnisse) tragen gängige Überschriften, die Parser üblicherweise erkennen.' : 'Einige Standardabschnitte wurden nicht erkannt. Bitte Berufserfahrung, Ausbildung und Kenntnisse prüfen.'
+  });
+
+  // D. Tabellen-Parsing & Trennzeichen (keine verklebten Wörter)
+  var rawNoColon = text.replace(/Adresse:\s*|Sprachen:\s*|Telefon:\s*|E-Mail:\s*/gi, '');
+  var hasGluedWords = /Adresse[A-ZÄÖÜ]|Sprachen[A-ZÄÖÜ]|Telefon[0-9]|E-Mail[a-zA-Z0-9]/i.test(rawNoColon);
+  tech.push({
+    title: 'Tabellen-Parsing &amp; Trennzeichen',
+    pass: !hasGluedWords,
+    desc: !hasGluedWords ? 'Tabellenzellen und Labels werden mit sauberen Trennzeichen (Doppelpunkt + Leerzeichen) extrahiert. Keine verklebten Wörter.' : 'Warnung: Einige Tabellenzellen kleben ohne Trennzeichen zusammen (z. B. Adresse und Straßenname).'
+  });
+
+  // E. Datums-Konsistenz
+  var allPeriods = [];
+  if (cvData.experience) {
+    cvData.experience.forEach(function(e) { if (e.period) allPeriods.push(e.period.trim()); });
+  }
+  if (cvData.education) {
+    cvData.education.forEach(function(e) { if (e.period) allPeriods.push(e.period.trim()); });
+  }
+  var mmYyyyRegex = /^\d{2}\/\d{4}/;
+  var hasMmYyyy = allPeriods.some(function(p) { return mmYyyyRegex.test(p) || /\d{2}\/\d{4}/.test(p); });
+  var hasNamedMonth = allPeriods.some(function(p) { return /(jan|feb|mär|apr|mai|jun|jul|aug|sep|okt|nov|dez|march|may|oct|dec)/i.test(p); });
+  var isDateConsistent = !(hasNamedMonth && hasMmYyyy);
+  tech.push({
+    title: 'Datums-Konsistenz &amp; Format',
+    pass: isDateConsistent,
+    desc: isDateConsistent ? 'Zeitangaben folgen einer konsistenten Logik (' + (hasMmYyyy ? 'MM/JJJJ' : 'Jahreszahlen') + '). Parser können die Beschäftigungsdauer zuverlässig berechnen.' : 'Uneinheitliche Zeitangaben: Monatsnamen (z. B. „März 2021“) und Ziffernformate (z. B. „03/2021“) sind gemischt. Empfohlen: Ein einheitliches Format wie MM/JJJJ durchziehen.'
+  });
+
+  // F. Textstrom-Reinheit
+  var hasSvgArtifacts = /<svg|<path|<rect/i.test(text);
+  tech.push({
+    title: 'Textstrom-Reinheit (keine Glyphen/Icons)',
+    pass: !hasSvgArtifacts,
+    desc: !hasSvgArtifacts ? 'Keine störenden Icon-Reste, Grafikfragmente oder Vektor-Artefakte im Textstrom.' : 'Störende SVG-Fragmente im Textstrom entdeckt.'
+  });
+
+
+  // ═══════════════════════════════════════
+  // 2. RECRUITER- & CONTENT-SCORE (Wirkung & Relevanz)
+  // ═══════════════════════════════════════
+
+  // A. Quantifizierbare Erfolge (Numbers & Metrics in Bullets)
+  var allTasks = [];
+  if (cvData.experience) {
+    cvData.experience.forEach(function(exp) {
+      if (exp.tasks && Array.isArray(exp.tasks)) {
+        exp.tasks.forEach(function(t) {
+          if (t && t.trim()) allTasks.push(t.trim());
+        });
+      }
+    });
+  }
+  var tasksWithNumbers = allTasks.filter(function(t) {
+    return /\d+|%|€|\$|EUR|USD|Mio|k\b/i.test(t);
+  });
+  var metricRatio = allTasks.length > 0 ? (tasksWithNumbers.length / allTasks.length) : 0;
+  var hasGoodMetrics = metricRatio >= 0.25;
+  recruiter.push({
+    title: 'Quantifizierbare Leistungen &amp; Kennzahlen',
+    pass: hasGoodMetrics,
+    desc: hasGoodMetrics ? (tasksWithNumbers.length + ' von ' + allTasks.length + ' Stichpunkten (' + Math.round(metricRatio * 100) + ' %) enthalten messbare Zahlen, Prozente oder Budgets. Sehr gut!') : ('Nur ' + tasksWithNumbers.length + ' von ' + allTasks.length + ' Stichpunkten (' + Math.round(metricRatio * 100) + ' %) enthalten konkrete Zahlen. Recruiter und Scoring-Tools bevorzugen messbare Erfolge (z. B. %-Steigerungen, Teamgrößen, Projektbudgets, Systemanzahl).')
+  });
+
+  // B. Kurzprofil / Executive Summary
+  var hasSummary = !!(cvData.personal && cvData.personal.highlight && cvData.personal.highlight.trim().length > 20);
+  recruiter.push({
+    title: 'Kurzprofil / Executive Summary',
+    pass: hasSummary,
+    desc: hasSummary ? 'Ein prägnantes Kurzprofil am Anfang vermittelt Recruitern in den ersten 5 Sekunden Ihre Kernkompetenz und Ihren Mehrwert.' : 'Kein Kurzprofil vorhanden. Fügen Sie unter „Persönliche Daten“ ein 3–4 zeiliges Qualifikationsprofil hinzu, damit Recruiter sofort sehen, wer Sie sind und was Sie auszeichnet.'
+  });
+
+  // C. Kompakte Stichpunkte (1–2 Zeilen)
+  var longTasks = allTasks.filter(function(t) { return t.length > 220; });
+  var hasConciseBullets = longTasks.length === 0;
+  recruiter.push({
+    title: 'Prägnante Stichpunkte (1–2 Zeilen)',
+    pass: hasConciseBullets,
+    desc: hasConciseBullets ? 'Alle ' + allTasks.length + ' Stichpunkte sind angenehm kompakt und lassen sich in wenigen Sekunden überfliegen.' : (longTasks.length + ' Stichpunkte sind sehr lang (> 220 Zeichen). Schachtelsätze überfordern Recruiter beim schnellen Screening. Kürzen Sie auf 1–2 Kernzeilen.')
+  });
+
+  // D. Zielmarkt-Check (DACH vs. US/UK)
+  var isEnglish = (outputLang === 'en');
+  var hasBirthdate = !!(cvData.personal && cvData.personal.birthdate && cvData.personal.birthdate.trim());
+  var targetMarketPass = isEnglish ? !hasBirthdate : true;
+  var targetMarketDesc = '';
+  if (isEnglish) {
+    targetMarketDesc = hasBirthdate ? 'Hinweis für englischsprachige Märkte (US/UK/Kanada): Geburtsdatum und Geburtsort werden aus Anti-Diskriminierungsgründen standardmäßig weggelassen.' : 'Zielmarkt-Konform: Keine heiklen persönlichen Daten (Geburtsdatum) im englischen Lebenslauf.';
+  } else {
+    targetMarketDesc = 'Zielmarkt-Konform: Angaben entsprechen den üblichen Standards für den deutschsprachigen Raum (DACH).';
+  }
+  recruiter.push({
+    title: isEnglish ? 'Zielmarkt-Check (International US/UK)' : 'Zielmarkt-Check (DACH)',
+    pass: targetMarketPass,
+    desc: targetMarketDesc
+  });
+
+  return { technical: tech, recruiter: recruiter };
+}
+
+var currentAtsTab = 'tech';
+function switchAtsTab(tab) {
+  currentAtsTab = tab;
+  var bTech = document.getElementById('tab-btn-tech');
+  var bContent = document.getElementById('tab-btn-content');
+  var bStream = document.getElementById('tab-btn-stream');
+  if (bTech) bTech.classList.toggle('on', tab === 'tech');
+  if (bContent) bContent.classList.toggle('on', tab === 'content');
+  if (bStream) bStream.classList.toggle('on', tab === 'stream');
+
+  var pTech = document.getElementById('ats-tab-panel-tech');
+  var pContent = document.getElementById('ats-tab-panel-content');
+  var pStream = document.getElementById('ats-tab-panel-stream');
+  if (pTech) pTech.style.display = (tab === 'tech') ? 'flex' : 'none';
+  if (pContent) pContent.style.display = (tab === 'content') ? 'flex' : 'none';
+  if (pStream) pStream.style.display = (tab === 'stream') ? 'flex' : 'none';
+}
+
+function renderAtsCheckList(items, containerId) {
+  var el = document.getElementById(containerId);
+  if (!el) return;
+  var html = '';
+  for (var i = 0; i < items.length; i++) {
+    var c = items[i];
+    html += '<div class="ats-check-item">';
+    if (c.pass) {
+      html += '<span class="ats-icon-pill pass" aria-label="Erfüllt"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg></span>';
+    } else {
+      html += '<span class="ats-icon-pill warn" aria-label="Hinweis"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></span>';
+    }
+    html += '<div><div class="ats-check-title">' + c.title + '</div><div class="ats-check-desc">' + c.desc + '</div></div>';
+    html += '</div>';
+  }
+  el.innerHTML = html;
+}
+
+function openAtsModal() {
+  renderPreviewImmediate();
+  var modal = document.getElementById('ats-modal');
+  if (!modal) return;
+  
+  var stream = extractAtsText();
+  var audit = runAtsAudit(stream);
+  
+  // Technical checks
+  var techPassed = audit.technical.filter(function(c) { return c.pass; }).length;
+  var techTotal = audit.technical.length;
+  var techPerfect = techPassed === techTotal;
+  var techBadgeEl = document.getElementById('ats-tech-badge');
+  if (techBadgeEl) {
+    techBadgeEl.className = 'ats-badge ' + (techPerfect ? 'success' : 'warning');
+    var badgeIcon = techPerfect
+      ? '<div class="ats-badge-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><polyline points="20 6 9 17 4 12"/></svg></div>'
+      : '<div class="ats-badge-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div>';
+    var badgeTitle = 'Technischer ATS-Score: ' + techPassed + ' von ' + techTotal + ' Kriterien erfüllt (' + Math.round((techPassed/techTotal)*100) + ' %)';
+    var badgeText = techPerfect
+      ? 'Alle technischen Prüfregeln sind erfüllt.'
+      : 'Einige technische Kriterien sollten für eine optimale Maschinenlesbarkeit noch angepasst werden.';
+    techBadgeEl.innerHTML = badgeIcon + '<div class="ats-badge-content"><div class="ats-badge-title">' + badgeTitle + '</div><div class="ats-badge-text">' + badgeText + '</div></div>';
+  }
+  renderAtsCheckList(audit.technical, 'ats-tech-checklist');
+  var techNumEl = document.getElementById('tech-score-num');
+  if (techNumEl) techNumEl.textContent = techPassed + '/' + techTotal;
+
+  // Recruiter checks
+  var recPassed = audit.recruiter.filter(function(c) { return c.pass; }).length;
+  var recTotal = audit.recruiter.length;
+  var recBadgeEl = document.getElementById('ats-content-badge');
+  if (recBadgeEl) {
+    var recPct = Math.round((recPassed/recTotal)*100);
+    var recSuccess = recPassed >= 3;
+    recBadgeEl.className = 'ats-badge ' + (recSuccess ? 'success' : 'warning');
+    var recIcon = recSuccess
+      ? '<div class="ats-badge-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></div>'
+      : '<div class="ats-badge-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div>';
+    var recTitle = 'Recruiter- &amp; Content-Score: ' + recPassed + ' von ' + recTotal + ' Empfehlungen erfüllt (' + recPct + ' %)';
+    var recText = recSuccess
+      ? 'Gute inhaltliche Strukturierung mit hoher Scan-Geschwindigkeit für Personaler.'
+      : 'Optimierungspotenzial bei Kennzahlen, Kurzprofil oder Formulierungslänge identifiziert.';
+    recBadgeEl.innerHTML = recIcon + '<div class="ats-badge-content"><div class="ats-badge-title">' + recTitle + '</div><div class="ats-badge-text">' + recText + '</div></div>';
+  }
+  renderAtsCheckList(audit.recruiter, 'ats-content-checklist');
+  var contentNumEl = document.getElementById('content-score-num');
+  if (contentNumEl) contentNumEl.textContent = recPassed + '/' + recTotal;
+  
+  var preEl = document.getElementById('ats-raw-stream');
+  if (preEl) preEl.textContent = stream;
+
+  switchAtsTab(currentAtsTab || 'tech');
+  modal.classList.add('on');
+}
+
+function closeAtsModal() {
+  var modal = document.getElementById('ats-modal');
+  if (modal) modal.classList.remove('on');
+}
+
+function copyAtsText() {
+  var pre = document.getElementById('ats-raw-stream');
+  if (!pre) return;
+  var btn = document.getElementById('btn-copy-ats');
+  navigator.clipboard.writeText(pre.textContent).then(function() {
+    if (btn) {
+      var oldHtml = btn.innerHTML;
+      btn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><polyline points="20 6 9 17 4 12"/></svg> Kopiert!';
+      btn.style.borderColor = 'var(--ui-color-status-success)';
+      btn.style.color = 'var(--ui-color-status-success)';
+      setTimeout(function() {
+        btn.innerHTML = oldHtml;
+        btn.style.borderColor = '';
+        btn.style.color = '';
+      }, 1500);
+    }
+  });
+}
+
+var helpers = {
+  esc: esc,
+  escAttr: escAttr,
+  icons: ICONS,
+  companyDisplay: companyDisplay,
+  groupByCompany: groupByCompany,
+  companyPeriod: companyPeriod,
+  formatPeriod: formatPeriod,
+  translateSkillList: translateSkillList,
+  translateLangName: translateLangName,
+  translateLevel: translateLevel,
+  formatSkillBadge: formatSkillBadge,
+  formatSkillValue: formatSkillValue,
+  formatSkillLine: formatSkillLine,
+  formatSkills: formatSkills,
+  t: t,
+  get lang() { return outputLang; },
+  renderExperience: renderExperience,
+  renderSignature: renderSignature,
+  renderOptionalSections: renderOptionalSections
+};
+
+// ═══════════════════════════════════════
+// PAGE MEASUREMENT
+// ═══════════════════════════════════════
+var _pageHeightPx = 0;
+
+function getPageHeightPx() {
+  if (_pageHeightPx > 0) return _pageHeightPx;
+  var m = document.createElement('div');
+  m.style.cssText = 'width:210mm;height:297mm;position:absolute;visibility:hidden;left:-9999px';
+  document.body.appendChild(m);
+  _pageHeightPx = m.offsetHeight;
+  document.body.removeChild(m);
+  return _pageHeightPx;
+}
+
+// ═══════════════════════════════════════
+// LAYOUT MANAGEMENT
+// ═══════════════════════════════════════
+function getLayouts() { return window.CV_LAYOUTS || {}; }
+
+function setLayout(key) {
+  currentLayout = key;
+  document.querySelectorAll('[data-lay]').forEach(function(b) { b.classList.toggle('on', b.dataset.lay===key); });
+  applyLayoutCSS(); renderPreviewImmediate();
+}
+
+function applyLayoutCSS() {
+  var layout = getLayouts()[currentLayout];
+  var css = (layout && layout.css) ? layout.css : '';
+
+  // Inject custom overrides
+  var overrides = '';
+  if (customStyle.accentColor) {
+    var c = customStyle.accentColor;
+    // Override all accent color references in layouts
+    overrides += '.cv-root .cv-sh, .cv-root .cv-sh-line, .cv-root .cv-deco-top, .cv-root .cv-entry-right, .cv-root .cv-cg-right, .cv-root .cv-edu-right { border-color: '+c+' !important; }\n';
+    overrides += '.cv-root .cv-sh { color: '+c+' !important; }\n';
+    overrides += '.cv-root .cv-sh-line { background: '+c+' !important; }\n';
+    overrides += '.cv-root .cv-deco-top { background: linear-gradient(135deg, '+c+'cc 0%, '+c+' 55%, '+c+'88 100%) !important; }\n';
+    overrides += '.cv-root .cv-deco-geo::after { border-left-color: '+c+' !important; }\n';
+    overrides += '.cv-root .cv-pt .pi, .cv-root .cv-pt .pl { color: '+c+' !important; }\n';
+    overrides += '.cv-root .cv-entry-right, .cv-root .cv-cg-right, .cv-root .cv-edu-right { border-top-color: '+c+' !important; }\n';
+    overrides += '.cv-root .cv-entry-sub, .cv-root .cv-sub-role { color: '+c+' !important; }\n';
+    overrides += '.cv-root .cv-sk .skl { color: '+c+' !important; }\n';
+    // Layout Medizinisch
+    overrides += '.cv-root .cv-med-header { background: linear-gradient(135deg, '+c+'dd 0%, '+c+' 40%, '+c+'aa 100%) !important; }\n';
+    overrides += '.cv-root .cv-highlight { border-left-color: '+c+' !important; }\n';
+    overrides += '.cv-root .cv-highlight-label { color: '+c+' !important; }\n';
+    // Layout Marginalie
+    overrides += '.cv-root .cv-mg-rule { background: '+c+' !important; }\n';
+    overrides += '.cv-root .cv-entry-ul li::marker, .cv-root .cv-sub-ul li::marker { color: '+c+' !important; }\n';
+  }
+  if (customStyle.fontFamily) {
+    overrides += '.cv-root { font-family: '+customStyle.fontFamily+' !important; }\n';
+  }
+  if (customStyle.fontSize) {
+    overrides += '.cv-root { font-size: '+customStyle.fontSize+' !important; }\n';
+  }
+
+  document.getElementById('cv-layout-style').textContent = css + '\n' + overrides;
+}
+
+function buildLayoutButtons() {
+  var container = document.getElementById('layout-btns');
+  var layouts = getLayouts(); var html = '';
+  for (var key in layouts) {
+    if (!layouts.hasOwnProperty(key)) continue;
+    var l = layouts[key];
+    html += '<button class="seg-btn'+(key===currentLayout?' on':'')+'" data-lay="'+key+'" onclick="setLayout(\''+key+'\')" title="'+esc(l.desc)+'">';
+    html += '<span class="dot" style="background:'+l.accent+'"></span>'+esc(l.name)+'</button>';
+  }
+  container.innerHTML = html;
+}
+
+function syncModeButtons() {
+  document.querySelectorAll('[data-lay]').forEach(function(b) {
+    b.classList.toggle('on', b.dataset.lay === currentLayout);
+  });
+  document.querySelectorAll('[data-grp]').forEach(function(b) {
+    b.classList.toggle('on', b.dataset.grp === grouping);
+  });
+}
+
+// ═══════════════════════════════════════
+// GROUPING / PHOTOS / DATA OPS
+// ═══════════════════════════════════════
+function setGrouping(g) {
+  grouping = g;
+  document.querySelectorAll('[data-grp]').forEach(function(b) { b.classList.toggle('on', b.dataset.grp===g); });
+  renderPreviewImmediate();
+}
+
+function handlePhotoUpload(event, field) {
+  var file = event.target.files[0]; if (!file) return;
+  resizeAndSanitizeImage(file, field, function(dataURL) {
+    var sanitized = sanitizeImage(dataURL);
+    if (sanitized) {
+      cvData[field] = sanitized;
+    } else {
+      alert('Ungültiges Bildformat. Nur PNG, JPEG und WEBP sind erlaubt.');
+    }
+    renderAll();
+  });
+  event.target.value = '';
+}
+function removePhoto(field) { cvData[field] = ''; renderAll(); }
+
+var focusedSection = localStorage.getItem('cv_focused_section') || 'experience';
+
+function toggleFocusedSection(sec) {
+  if (focusedSection === sec) {
+    focusedSection = null; // Toggle closed
+  } else {
+    focusedSection = sec;
+  }
+  try { localStorage.setItem('cv_focused_section', focusedSection || ''); } catch(e){}
+  renderEditor();
+}
+
+function toggleSection(k) { toggleFocusedSection(k); }
+function toggleExpEdit(id) { editingExp=editingExp===id?null:id; renderEditor(); }
+function toggleEduEdit(id) { editingEdu=editingEdu===id?null:id; renderEditor(); }
+function updatePersonal(f,v) { cvData.personal[f]=v; renderPreview(); }
+function updateSkill(f,v) { cvData.skills[f]=v; renderPreview(); }
+function updateSigLoc(v) { cvData.signatureLocation=v; renderPreview(); }
+function updateAccentColor(v) { customStyle.accentColor=v; applyLayoutCSS(); renderPreviewImmediate(); }
+function resetAccentColor() { customStyle.accentColor=''; applyLayoutCSS(); renderPreviewImmediate(); renderEditor(); }
+function updateFontFamily(v) { customStyle.fontFamily=v; applyLayoutCSS(); renderPreviewImmediate(); }
+function updateFontSize(v) { customStyle.fontSize=v; applyLayoutCSS(); renderPreviewImmediate(); }
+function updateExp(id,f,v) { var e=cvData.experience.find(function(x){return x.id===id;}); if(e){e[f]=v; renderPreview();} }
+function updateExpTasks(id,v) { var e=cvData.experience.find(function(x){return x.id===id;}); if(e){e.tasks=v.split('\n').filter(function(t){return t.trim();}); renderPreview();} }
+function updateEdu(id,f,v) { var e=cvData.education.find(function(x){return x.id===id;}); if(e){e[f]=v; renderPreview();} }
+
+function addExperience() {
+  var id=nextId++;
+  cvData.experience.unshift({id:id, company:'Firma', entity:'', role:'Position', period:'MM/YYYY - MM/YYYY', tasks:['Aufgabe']});
+  editingExp=id; focusedSection='experience'; renderAll();
+}
+function removeExperience(id) { cvData.experience=cvData.experience.filter(function(e){return e.id!==id;}); editingExp=null; renderAll(); }
+function moveExp(id,dir) {
+  var i=cvData.experience.findIndex(function(e){return e.id===id;});
+  var j=i+dir; if(j<0||j>=cvData.experience.length)return;
+  var tmp=cvData.experience[i]; cvData.experience[i]=cvData.experience[j]; cvData.experience[j]=tmp;
+  renderAll();
+}
+function addEducation() {
+  var id=nextId++;
+  cvData.education.unshift({id:id, institution:'Institution', degree:'Abschluss', period:'YYYY - YYYY'});
+  editingEdu=id; focusedSection='education'; renderAll();
+}
+function removeEducation(id) { cvData.education=cvData.education.filter(function(e){return e.id!==id;}); editingEdu=null; renderAll(); }
+
+// ── Certificates CRUD ──
+function toggleCertEdit(id) { editingCert=editingCert===id?null:id; renderEditor(); }
+function updateCert(id,f,v) { var e=cvData.certificates.find(function(x){return x.id===id;}); if(e){e[f]=v; renderPreview();} }
+function addCertificate() {
+  var id=nextId++; cvData.certificates.unshift({id:id, name:'Zertifikat', issuer:'Aussteller', date:'', details:''});
+  editingCert=id; focusedSection='certificates'; renderAll();
+}
+function removeCertificate(id) { cvData.certificates=cvData.certificates.filter(function(e){return e.id!==id;}); editingCert=null; renderAll(); }
+
+// ── Projects CRUD ──
+function toggleProjEdit(id) { editingProj=editingProj===id?null:id; renderEditor(); }
+function updateProj(id,f,v) { var e=cvData.projects.find(function(x){return x.id===id;}); if(e){e[f]=v; renderPreview();} }
+function updateProjTasks(id,v) { var e=cvData.projects.find(function(x){return x.id===id;}); if(e){e.tasks=v.split('\n').filter(function(t){return t.trim();}); renderPreview();} }
+function addProject() {
+  var id=nextId++; cvData.projects.unshift({id:id, name:'Projektname', role:'Rolle', period:'', tasks:['Beschreibung']});
+  editingProj=id; focusedSection='projects'; renderAll();
+}
+function removeProject(id) { cvData.projects=cvData.projects.filter(function(e){return e.id!==id;}); editingProj=null; renderAll(); }
+
+// ── Volunteer CRUD ──
+function toggleVolEdit(id) { editingVol=editingVol===id?null:id; renderEditor(); }
+function updateVol(id,f,v) { var e=cvData.volunteer.find(function(x){return x.id===id;}); if(e){e[f]=v; renderPreview();} }
+function addVolunteer() {
+  var id=nextId++; cvData.volunteer.unshift({id:id, role:'Tätigkeit', org:'Organisation', period:''});
+  editingVol=id; focusedSection='projects'; renderAll();
+}
+function removeVolunteer(id) { cvData.volunteer=cvData.volunteer.filter(function(e){return e.id!==id;}); editingVol=null; renderAll(); }
+
+// ── Drag & Drop ──
+function enableDrag(ev) {
+  var card = ev.target.closest('.ic');
+  if (card) card.setAttribute('draggable', 'true');
+}
+function disableDrag(ev) {
+  var card = ev.target.closest('.ic');
+  if (card) card.setAttribute('draggable', 'false');
+}
+function handleKeyboardReorder(section, idx, ev) {
+  var arr = cvData[section];
+  var newIdx = idx;
+  if (ev.key === 'ArrowUp') {
+    ev.preventDefault();
+    newIdx = idx - 1;
+  } else if (ev.key === 'ArrowDown') {
+    ev.preventDefault();
+    newIdx = idx + 1;
+  } else {
+    return;
+  }
+  
+  if (newIdx >= 0 && newIdx < arr.length) {
+    var item = arr.splice(idx, 1)[0];
+    arr.splice(newIdx, 0, item);
+    
+    // Sync active edit states
+    if (section === 'experience' && editingExp === item.id) editingExp = item.id;
+    else if (section === 'education' && editingEdu === item.id) editingEdu = item.id;
+    else if (section === 'certificates' && editingCert === item.id) editingCert = item.id;
+    else if (section === 'projects' && editingProj === item.id) editingProj = item.id;
+    else if (section === 'volunteer' && editingVol === item.id) editingVol = item.id;
+    
+    renderAll();
+    
+    setTimeout(function() {
+      var sectionBody = document.querySelector('.sec-b.on');
+      if (sectionBody) {
+        var handles = sectionBody.querySelectorAll('.drag-handle');
+        if (handles[newIdx]) {
+          handles[newIdx].focus();
+        }
+      }
+    }, 50);
+  }
+}
+function onDragStart(section, idx, ev) {
+  dragSection = section; dragIdx = idx;
+  ev.dataTransfer.effectAllowed = 'move';
+  ev.dataTransfer.setData('text/plain', idx);
+  var card = ev.currentTarget;
+  setTimeout(function(){ card.classList.add('dragging'); }, 0);
+}
+function onDragOver(ev) { ev.preventDefault(); ev.dataTransfer.dropEffect = 'move'; }
+function onDragEnter(ev) {
+  var card = ev.target.closest('.ic');
+  if (card) { document.querySelectorAll('.ic.drag-over').forEach(function(c){c.classList.remove('drag-over');}); card.classList.add('drag-over'); }
+}
+function onDragEnd() {
+  dragSection = null; dragIdx = null;
+  document.querySelectorAll('.ic').forEach(function(c){
+    c.classList.remove('dragging','drag-over');
+    c.setAttribute('draggable', 'false');
+  });
+}
+function onDrop(section, targetIdx, ev) {
+  ev.preventDefault();
+  if (dragSection !== section || dragIdx === null || dragIdx === targetIdx) { onDragEnd(); return; }
+  var arr = cvData[section];
+  var item = arr.splice(dragIdx, 1)[0];
+  arr.splice(targetIdx, 0, item);
+  onDragEnd();
+  renderAll();
+}
+
+// ═══════════════════════════════════════
+// EXPORT / IMPORT
+// ═══════════════════════════════════════
+function exportJSON() {
+  var name = (cvData.personal.name || 'CV').replace(/[,.\s]+/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
+  var exportData = JSON.parse(JSON.stringify(cvData));
+  exportData._builder = { schemaVersion: 2, layout: currentLayout, grouping: grouping, outputLang: outputLang };
+  exportData.customStyle = customStyle;
+  var blob=new Blob([JSON.stringify(exportData,null,2)],{type:'application/json'});
+  var a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download=name+'-CV-Export.json'; a.click();
+}
+function importJSON(ev) {
+  var file=ev.target.files[0]; if(!file)return;
+  var r=new FileReader();
+  r.onload=function(e){
+    try {
+      var d=JSON.parse(e.target.result);
+      if(d && typeof d === 'object' && !Array.isArray(d) && d.personal && typeof d.personal === 'object' && Array.isArray(d.experience)) {
+        var builderSettings = d._builder && typeof d._builder === 'object' ? d._builder : null;
+        delete d._builder;
+
+        if (d.customStyle && typeof d.customStyle === 'object') {
+          customStyle = {
+            accentColor: asText(d.customStyle.accentColor),
+            fontFamily: asText(d.customStyle.fontFamily),
+            fontSize: asText(d.customStyle.fontSize),
+            outputLang: d.customStyle.outputLang === 'en' ? 'en' : 'de'
+          };
+          outputLang = customStyle.outputLang;
+          delete d.customStyle;
+        } else {
+          customStyle = { accentColor: '', fontFamily: '', fontSize: '', outputLang: 'de' };
+          outputLang = 'de';
+        }
+
+        if (builderSettings) {
+          var requestedLayout = asText(builderSettings.layout);
+          var requestedGrouping = asText(builderSettings.grouping);
+          var requestedLang = asText(builderSettings.outputLang);
+          if (requestedLayout && getLayouts()[requestedLayout]) currentLayout = requestedLayout;
+          if (requestedGrouping === 'position' || requestedGrouping === 'company') grouping = requestedGrouping;
+          if (requestedLang === 'en' || requestedLang === 'de') {
+            outputLang = requestedLang;
+            customStyle.outputLang = outputLang;
+          }
+        }
+
+        cvData=normalizeCVData(d);
+        renderAll();
+        syncModeButtons();
+      } else alert('Ungültiges Format.');
+    } catch(err) { alert('Ungültige JSON-Datei.'); }
+  };
+  r.readAsText(file); ev.target.value='';
+}
+
+function exportPDF() {
+  if (renderTimeout) clearTimeout(renderTimeout);
+  renderPreviewImmediate();
+
+  var defaultDocName = (outputLang === 'en') ? 'CV' : 'Lebenslauf';
+  var parts = (cvData.personal.name || defaultDocName).split(/[,\s]+/).filter(function(s){return s;});
+  // Name is "Nachname, Vorname" format - flip to "Vorname_Nachname"
+  var nameStr = parts.length >= 2 ? parts[1]+'_'+parts[0] : parts.join('_');
+  var d = new Date();
+  var dd = String(d.getDate()).padStart(2,'0');
+  var mm = String(d.getMonth()+1).padStart(2,'0');
+  var yy = String(d.getFullYear()).slice(-2);
+  var oldTitle = document.title;
+  var docSuffix = (outputLang === 'en') ? 'CV' : 'Lebenslauf';
+  document.title = nameStr + '-' + docSuffix + '_' + dd + '-' + mm + '-' + yy;
+  window.print();
+  setTimeout(function(){ document.title = oldTitle; }, 1000);
+}
+
+// ═══════════════════════════════════════
+// RENDER PREVIEW (with pagination)
+// ═══════════════════════════════════════
+var renderTimeout = null;
+function renderPreview() {
+  if (renderTimeout) clearTimeout(renderTimeout);
+  renderTimeout = setTimeout(renderPreviewImmediate, 150);
+}
+
+function renderPreviewImmediate() {
+  var layout = getLayouts()[currentLayout];
+  if (!layout) return;
+
+  // Step 1: Render content into hidden measurement div
+  var measure = document.getElementById('cv-measure');
+  measure.innerHTML = layout.render(cvData, grouping, helpers);
+
+  // Step 2: Wait for images to load, then paginate
+  var images = measure.querySelectorAll('img');
+  var loaded = 0;
+  var total = images.length;
+
+  function doPaginate() {
+    var pageH = getPageHeightPx();
+    var topPad = Math.round(pageH * 0.042); // ~12.5mm breathing room on pages 2+ (~47px)
+    var botPad = Math.round(pageH * 0.03);  // ~9mm reserved for page number (~34px)
+    var usablePageH = pageH - topPad - botPad;
+
+    // Step 2b: Avoid splitting entries across pages (including list items)
+    var selectors = '.cv-entry, .cv-sub, .cv-edu, .cv-entry-ul li, .cv-sub-ul li';
+
+    // A section starts at .cv-sh and ends immediately before the next
+    // section heading (or the signature block). This convention is shared
+    // by all layouts and lets pagination keep complete sections together.
+    function getSectionEnd(header) {
+      var end = header;
+      var node = header.nextElementSibling;
+      while (node &&
+             !node.classList.contains('cv-sh') &&
+             !node.classList.contains('cv-sig-block')) {
+        end = node;
+        node = node.nextElementSibling;
+      }
+      return end;
+    }
+
+    // Three passes for cascading pushes
+    for (var pass = 0; pass < 3; pass++) {
+      // 0. Ensure no top-level element on continuation pages (pageIdx > 0) starts too close to the top edge
+      var contTopElements = measure.querySelectorAll('.cv-sh, .cv-cg, .cv-entry, .cv-edu, .cv-pt-wrap');
+      var mRect = measure.getBoundingClientRect();
+      for (var ct = 0; ct < contTopElements.length; ct++) {
+        var cEl = contTopElements[ct];
+        var cRect = cEl.getBoundingClientRect();
+        var cTop = cRect.top - mRect.top;
+        var cPage = Math.floor(cTop / pageH);
+        if (cPage > 0 && cTop < (cPage * pageH + topPad)) {
+          var cPush = (cPage * pageH + topPad) - cTop;
+          cEl.style.marginTop = (parseFloat(getComputedStyle(cEl).marginTop) || 0) + cPush + 'px';
+          mRect = measure.getBoundingClientRect();
+        }
+      }
+
+      // 1. Keep a complete section on one page whenever the section is short
+      // enough to fit. Oversized sections fall through to the item-level
+      // rules below and may still break cleanly between entries.
+      var sectionHeaders = measure.querySelectorAll('.cv-sh');
+      var mRect = measure.getBoundingClientRect();
+      for (var sh = 0; sh < sectionHeaders.length; sh++) {
+        var sectionHeader = sectionHeaders[sh];
+        if (sectionHeader.classList.contains('cv-sh-splittable')) continue;
+        var sectionEnd = getSectionEnd(sectionHeader);
+        var sectionHeaderRect = sectionHeader.getBoundingClientRect();
+        var sectionEndRect = sectionEnd.getBoundingClientRect();
+        var sectionTop = sectionHeaderRect.top - mRect.top;
+        var sectionBottom = sectionEndRect.bottom - mRect.top;
+        var sectionHeight = sectionBottom - sectionTop;
+
+        if (sectionHeight > usablePageH) continue;
+
+        var sectionPage = Math.floor(sectionTop / pageH);
+        var sectionSafeEnd = (sectionPage + 1) * pageH - botPad;
+        if (sectionBottom > sectionSafeEnd && sectionTop > sectionPage * pageH + 20) {
+          var sectionTargetTop = (sectionPage + 1) * pageH + topPad;
+          var sectionPush = sectionTargetTop - sectionTop;
+          sectionHeader.style.marginTop =
+            (parseFloat(getComputedStyle(sectionHeader).marginTop) || 0) + sectionPush + 'px';
+        }
+      }
+
+      // 2. Keep company grouping headers (.cv-cg-head) together with their first position (.cv-sub)
+      var companyGroups = measure.querySelectorAll('.cv-cg');
+      mRect = measure.getBoundingClientRect();
+      for (var cgIdx = 0; cgIdx < companyGroups.length; cgIdx++) {
+        var cg = companyGroups[cgIdx];
+        var cgHead = cg.querySelector('.cv-cg-head');
+        var firstSub = cg.querySelector('.cv-sub');
+        var cgRect = cg.getBoundingClientRect();
+        var cgTop = cgRect.top - mRect.top;
+        var cgPageIdx = Math.floor(cgTop / pageH);
+        var safeEnd = (cgPageIdx + 1) * pageH - botPad;
+
+        var cgTestBot = cgHead ? (cgHead.getBoundingClientRect().bottom - mRect.top) : (cgTop + 30);
+        if (firstSub) {
+          cgTestBot = firstSub.getBoundingClientRect().bottom - mRect.top;
+          if ((cgTestBot - cgTop) > usablePageH) {
+            var subHead = firstSub.querySelector('.cv-sub-head');
+            if (subHead) cgTestBot = subHead.getBoundingClientRect().bottom - mRect.top;
+          }
+        }
+
+        if ((cgTestBot - cgTop) <= usablePageH && cgTestBot > safeEnd && cgTop > cgPageIdx * pageH + 20) {
+          var cgPush = (cgPageIdx + 1) * pageH + topPad - cgTop;
+          cg.style.marginTop = (parseFloat(getComputedStyle(cg).marginTop) || 0) + cgPush + 'px';
+        }
+      }
+
+      // 3. Prevent widowed section headers (keep Header + Line + First Item together)
+      var headers = measure.querySelectorAll('.cv-sh');
+      mRect = measure.getBoundingClientRect();
+      for (var s = 0; s < headers.length; s++) {
+        var hdr = headers[s];
+        var hRect = hdr.getBoundingClientRect();
+        var hTop = hRect.top - mRect.top;
+        
+        var nextEl = hdr.nextElementSibling;
+        var lineEl = null;
+        var firstItem = null;
+        
+        if (nextEl && nextEl.classList.contains('cv-sh-line')) {
+          lineEl = nextEl;
+          nextEl = nextEl.nextElementSibling;
+        }
+        
+        if (nextEl) {
+          if (nextEl.classList.contains('cv-cg')) {
+            // For company grouping: keep section header + line + company head + first sub together
+            firstItem = nextEl.querySelector('.cv-sub') || nextEl.querySelector('.cv-cg-head') || nextEl;
+          } else if (nextEl.classList.contains('cv-pt-wrap')) {
+            firstItem = nextEl.querySelector('table tr');
+          } else if (nextEl.tagName === 'TABLE') {
+            firstItem = nextEl.querySelector('tr');
+          } else if (nextEl.tagName === 'UL' || nextEl.tagName === 'OL') {
+            firstItem = nextEl.querySelector('li') || nextEl;
+          } else {
+            firstItem = nextEl;
+          }
+        }
+        
+        var combinedBot = hRect.bottom - mRect.top;
+        if (firstItem) {
+          combinedBot = firstItem.getBoundingClientRect().bottom - mRect.top;
+        } else if (lineEl) {
+          combinedBot = lineEl.getBoundingClientRect().bottom - mRect.top;
+        }
+        
+        var combinedHeight = combinedBot - hTop;
+        if (combinedHeight > usablePageH && firstItem) {
+          var minHead = firstItem.querySelector ? firstItem.querySelector('.cv-sub-head, .cv-entry-main, .cv-cg-head, li') : null;
+          if (minHead) {
+            combinedBot = minHead.getBoundingClientRect().bottom - mRect.top;
+            combinedHeight = combinedBot - hTop;
+          }
+        }
+        if (combinedHeight > usablePageH) {
+          continue;
+        }
+        
+        var hPageIdx = Math.floor(hTop / pageH);
+        var safeEnd = (hPageIdx + 1) * pageH - botPad;
+        
+        if (combinedBot > safeEnd && hTop > hPageIdx * pageH + 20) {
+          var hPush = (hPageIdx + 1) * pageH + topPad - hTop;
+          hdr.style.marginTop = (parseFloat(getComputedStyle(hdr).marginTop) || 0) + hPush + 'px';
+        }
+      }
+
+      // 4. Avoid splitting entries across pages (including list items)
+      var noBreak = measure.querySelectorAll(selectors);
+      mRect = measure.getBoundingClientRect();
+      for (var n = 0; n < noBreak.length; n++) {
+        var el = noBreak[n];
+        var rect = el.getBoundingClientRect();
+        var elTop = rect.top - mRect.top;
+        var elBot = elTop + rect.height;
+        
+        var rectHeight = rect.height;
+        // Safety guard: if element is larger than the safe height of a page, do not attempt to push it
+        if (rectHeight > usablePageH) {
+          continue;
+        }
+
+        var pageIdx = Math.floor(elTop / pageH);
+        var safeEnd = (pageIdx + 1) * pageH - botPad;
+
+        // If element crosses safe zone, push to next page
+        if (elBot > safeEnd && elTop > pageIdx * pageH + 20) {
+          // If el is the first .cv-sub in a company group, push the entire company group instead!
+          if (el.classList.contains('cv-sub') && (!el.previousElementSibling || !el.previousElementSibling.classList.contains('cv-sub'))) {
+            var parentCg = el.closest('.cv-cg');
+            if (parentCg) {
+              var parentCgTop = parentCg.getBoundingClientRect().top - mRect.top;
+              var parentCgPage = Math.floor(parentCgTop / pageH);
+              if (parentCgTop > parentCgPage * pageH + 20) {
+                var cgPushVal = (parentCgPage + 1) * pageH + topPad - parentCgTop;
+                parentCg.style.marginTop = (parseFloat(getComputedStyle(parentCg).marginTop) || 0) + cgPushVal + 'px';
+                continue;
+              }
+            }
+          }
+
+          var targetTop = (pageIdx + 1) * pageH + topPad;
+          var push = targetTop - elTop;
+          el.style.marginTop = (parseFloat(getComputedStyle(el).marginTop) || 0) + push + 'px';
+          el.classList.add('cv-pushed-top');
+        }
+      }
+
+      // 5. Keep table rows (.cv-pt tr and .cv-sk tr) together without breaking across pages
+      var noBreakRows = measure.querySelectorAll('.cv-pt tr, .cv-sk tr');
+      mRect = measure.getBoundingClientRect();
+      for (var r = 0; r < noBreakRows.length; r++) {
+        var row = noBreakRows[r];
+        var rect = row.getBoundingClientRect();
+        var rowTop = rect.top - mRect.top;
+        var rowBot = rowTop + rect.height;
+        
+        var rowHeight = rect.height;
+        if (rowHeight > usablePageH) {
+          continue;
+        }
+        
+        var pageIdx = Math.floor(rowTop / pageH);
+        var safeEnd = (pageIdx + 1) * pageH - botPad;
+        
+        if (rowBot > safeEnd && rowTop > pageIdx * pageH + 20) {
+          var targetTop = (pageIdx + 1) * pageH + topPad;
+          var push = targetTop - rowTop;
+          
+          var prev = row.previousElementSibling;
+          if (prev && prev.classList.contains('cv-page-spacer')) {
+            prev.firstChild.style.height = push + 'px';
+          } else {
+            var spacer = document.createElement('tr');
+            spacer.className = 'cv-page-spacer';
+            spacer.innerHTML = '<td colspan="99" style="height:' + push + 'px; border:none; padding:0; background:transparent"></td>';
+            row.parentNode.insertBefore(spacer, row);
+          }
+        }
+      }
+
+      // 6. Signature: keep together but allow full page height (no botPad)
+      var sigs = measure.querySelectorAll('.cv-sig-block');
+      mRect = measure.getBoundingClientRect();
+      for (var sg = 0; sg < sigs.length; sg++) {
+        var sigEl = sigs[sg];
+        var sigRect = sigEl.getBoundingClientRect();
+        var sigTop = sigRect.top - mRect.top;
+        var sigBot = sigTop + sigRect.height;
+        
+        var sigHeight = sigRect.height;
+        if (sigHeight > usablePageH) {
+          continue;
+        }
+
+        var sigPage = Math.floor(sigTop / pageH);
+        var sigPageEnd = (sigPage + 1) * pageH;
+
+        if (sigBot > sigPageEnd && sigTop > sigPage * pageH + 20) {
+          var sigPush = sigPageEnd - sigTop + topPad;
+          sigEl.style.marginTop = (parseFloat(getComputedStyle(sigEl).marginTop) || 0) + sigPush + 'px';
+        }
+      }
+
+      // 7. Post-item sweep: Ensure no section header or company group was left stranded by downstream item shifts
+      var sweepHeaders = measure.querySelectorAll('.cv-sh');
+      mRect = measure.getBoundingClientRect();
+      for (var swH = 0; swH < sweepHeaders.length; swH++) {
+        var sHdr = sweepHeaders[swH];
+        var sHRect = sHdr.getBoundingClientRect();
+        var sHTop = sHRect.top - mRect.top;
+        var sNext = sHdr.nextElementSibling;
+        var sLine = null;
+        var sItem = null;
+        if (sNext && sNext.classList.contains('cv-sh-line')) {
+          sLine = sNext;
+          sNext = sNext.nextElementSibling;
+        }
+        if (sNext) {
+          if (sNext.classList.contains('cv-cg')) {
+            sItem = sNext.querySelector('.cv-sub') || sNext.querySelector('.cv-cg-head') || sNext;
+          } else if (sNext.classList.contains('cv-pt-wrap')) {
+            sItem = sNext.querySelector('table tr');
+          } else if (sNext.tagName === 'TABLE') {
+            sItem = sNext.querySelector('tr');
+          } else if (sNext.tagName === 'UL' || sNext.tagName === 'OL') {
+            sItem = sNext.querySelector('li') || sNext;
+          } else {
+            sItem = sNext;
+          }
+        }
+        var sCombBot = sHRect.bottom - mRect.top;
+        if (sItem) sCombBot = sItem.getBoundingClientRect().bottom - mRect.top;
+        else if (sLine) sCombBot = sLine.getBoundingClientRect().bottom - mRect.top;
+
+        var sCombHeight = sCombBot - sHTop;
+        if (sCombHeight <= usablePageH) {
+          var sPage = Math.floor(sHTop / pageH);
+          var sSafe = (sPage + 1) * pageH - botPad;
+          if (sCombBot > sSafe && sHTop > sPage * pageH + 20) {
+            var sPushVal = (sPage + 1) * pageH + topPad - sHTop;
+            sHdr.style.marginTop = (parseFloat(getComputedStyle(sHdr).marginTop) || 0) + sPushVal + 'px';
+          }
+        }
+      }
+
+      var sweepCg = measure.querySelectorAll('.cv-cg');
+      mRect = measure.getBoundingClientRect();
+      for (var swCg = 0; swCg < sweepCg.length; swCg++) {
+        var sCg = sweepCg[swCg];
+        var sCgHead = sCg.querySelector('.cv-cg-head');
+        var sFirstSub = sCg.querySelector('.cv-sub');
+        var sCgTop = sCg.getBoundingClientRect().top - mRect.top;
+        var sCgPage = Math.floor(sCgTop / pageH);
+        var sCgSafe = (sCgPage + 1) * pageH - botPad;
+        var sCgTestBot = sCgHead ? (sCgHead.getBoundingClientRect().bottom - mRect.top) : (sCgTop + 30);
+        if (sFirstSub) sCgTestBot = sFirstSub.getBoundingClientRect().bottom - mRect.top;
+        if ((sCgTestBot - sCgTop) <= usablePageH && sCgTestBot > sCgSafe && sCgTop > sCgPage * pageH + 20) {
+          var sCgPushVal = (sCgPage + 1) * pageH + topPad - sCgTop;
+          sCg.style.marginTop = (parseFloat(getComputedStyle(sCg).marginTop) || 0) + sCgPushVal + 'px';
+        }
+      }
+    }
+
+    // Re-measure after adjustments. scrollHeight also includes trailing
+    // layout padding and can therefore create a completely empty last page.
+    // Count only the bottom edge of actual rendered content instead.
+    function getRenderedContentHeight() {
+      var measureRect = measure.getBoundingClientRect();
+      var contentBottom = 0;
+
+      function includeElement(element) {
+        if (!element) return;
+        var rect = element.getBoundingClientRect();
+        if (rect.width <= 0 && rect.height <= 0) return;
+        contentBottom = Math.max(contentBottom, rect.bottom - measureRect.top);
+      }
+
+      for (var childIndex = 0; childIndex < measure.children.length; childIndex++) {
+        var child = measure.children[childIndex];
+        if (child.classList.contains('cv-body')) {
+          // Ignore the body's bottom padding; walk back to its last real node.
+          var lastContent = child.lastElementChild;
+          while (lastContent) {
+            var lastRect = lastContent.getBoundingClientRect();
+            if (lastRect.width > 0 || lastRect.height > 0) {
+              includeElement(lastContent);
+              break;
+            }
+            lastContent = lastContent.previousElementSibling;
+          }
+        } else {
+          // Header bands, photos and decorations can live outside .cv-body.
+          includeElement(child);
+        }
+      }
+
+      return contentBottom || measure.scrollHeight;
+    }
+
+    var totalH = getRenderedContentHeight();
+    var numPages = Math.max(1, Math.ceil(Math.max(1, totalH - 2) / pageH));
+
+    // Step 3: Build page divs
+    var panel = document.getElementById('pv-panel');
+    var contentHTML = measure.innerHTML;
+    var pagesHTML = '';
+
+    // Add visual page count warning badge at the top of the preview panel only if it exceeds 2 pages
+    var badgeHTML = '';
+    if (numPages > 2) {
+      badgeHTML = '<div class="cv-page-warning" style="background:var(--ui-color-status-warning-soft); color:var(--ui-color-status-warning); border:1px solid var(--ui-color-status-warning); padding:12px 18px; border-radius:8px; width:100%; max-width:210mm; font-size:13px; font-weight:600; display:flex; align-items:center; gap:8px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); margin-bottom:15px; box-sizing:border-box;">' +
+                  '<span>⚠️ <strong>Achtung:</strong> Ihr Lebenslauf umfasst <strong>' + numPages + ' Seiten</strong>. Ein professioneller Lebenslauf sollte in Deutschland idealerweise maximal 2 Seiten lang sein. Bitte kürzen Sie Texte oder passen Sie die Abstände an.</span>' +
+                  '</div>';
+      pagesHTML += badgeHTML;
+    }
+
+    for (var i = 0; i < numPages; i++) {
+      var pagePositionClass = i === 0 ? 'cv-page--first' : 'cv-page--continuation';
+      pagesHTML += '<div class="cv-page ' + pagePositionClass + '">';
+      pagesHTML += '<div class="cv-page-clip">';
+      pagesHTML += '<div class="cv-root" style="margin-top:' + (-i * pageH) + 'px">';
+      pagesHTML += contentHTML;
+      pagesHTML += '</div></div>';
+      var pageNumText = (outputLang === 'en') ? ('Page ' + (i + 1) + ' of ' + numPages) : ('Seite ' + (i + 1) + ' von ' + numPages);
+      pagesHTML += '<div class="cv-page-num">' + pageNumText + '</div>';
+      pagesHTML += '</div>';
+    }
+
+    panel.innerHTML = pagesHTML;
+    saveToLocalStorage();
+  }
+
+  if (total === 0) {
+    doPaginate();
+  } else {
+    // Wait for all images to load for accurate measurement
+    var check = function() {
+      loaded++;
+      if (loaded >= total) doPaginate();
+    };
+    for (var i = 0; i < total; i++) {
+      if (images[i].complete) { check(); }
+      else {
+        images[i].onload = check;
+        images[i].onerror = check;
+      }
+    }
+  }
+}
+
+// ═══════════════════════════════════════
+// RENDER EDITOR (Fokus-Akkordeon)
+// ═══════════════════════════════════════
+
+function renderEditor() {
+  var body = document.getElementById('ed-body');
+  if (!body) return;
+  var st = body.scrollTop;
+  var h = '';
+
+  var expTotal = cvData.experience ? cvData.experience.length : 0;
+  var eduTotal = cvData.education ? cvData.education.length : 0;
+  var certCount = cvData.certificates ? cvData.certificates.length : 0;
+  var projCount = cvData.projects ? cvData.projects.length : 0;
+  var volCount = cvData.volunteer ? cvData.volunteer.length : 0;
+
+  function renderFokusHeader(id, iconSvg, title, badgeCount, summaryText) {
+    var isOpen = focusedSection === id;
+    var res = '<div class="fokus-sec' + (isOpen ? ' on' : '') + '">';
+    res += '  <div class="fokus-sec-h" onclick="toggleFocusedSection(\'' + id + '\')">';
+    res += '    <div class="fokus-sec-left">';
+    res += '      <div class="fokus-sec-icon">' + iconSvg + '</div>';
+    res += '      <div class="fokus-sec-title">' + esc(title) + '</div>';
+    if (badgeCount !== undefined && badgeCount !== null) {
+      res += '    <span class="fokus-sec-badge">' + badgeCount + '</span>';
+    }
+    if (summaryText) {
+      res += '    <span class="fokus-sec-sub">' + esc(summaryText) + '</span>';
+    }
+    res += '    </div>';
+    res += '    <div class="fokus-sec-indicator">';
+    res += '      <span>' + (isOpen ? 'Im Fokus ▲' : 'Öffnen ▼') + '</span>';
+    res += '    </div>';
+    res += '  </div>';
+    if (isOpen) {
+      res += '  <div class="fokus-sec-b">';
+    }
+    return res;
+  }
+
+  function closeFokusSec(id) {
+    return focusedSection === id ? '  </div></div>' : '</div>';
+  }
+
+  // ── Sektion 1: Persönliche Angaben & Kurzprofil ──
+  var isPersOpen = focusedSection === 'personal';
+  var persSummary = cvData.personal.name ? (cvData.personal.name + (cvData.personal.title ? ' · ' + cvData.personal.title : '')) : 'Name, Kontaktdaten, Foto & Profil';
+  h += renderFokusHeader('personal', '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>', 'Persönliche Daten & Profil', null, persSummary);
+  if (isPersOpen) {
+    h += '<div class="wide-card">';
+    h += '  <div class="wide-card-h" style="cursor:default;"><div class="wide-card-t">Bewerbungsfoto &amp; Unterschrift</div></div>';
+    h += '  <div class="wide-card-b">';
+    h += '    <div class="grid-2-eq">';
+    h += '      <div style="display:flex; gap:12px; align-items:center;">';
+    h += '        <div class="photo-preview">';
+    if (cvData.photo) h += '<img src="' + escAttr(cvData.photo) + '">'; else h += 'Kein Foto';
+    h += '        </div>';
+    h += '        <div class="photo-btns">';
+    h += '          <div style="font-size:11.5px; font-weight:600; color:var(--ui-color-text); margin-bottom:2px;">Bewerbungsfoto</div>';
+    h += '          <button class="photo-btn" onclick="document.getElementById(\'photo-input\').click()">📷 Foto wählen</button>';
+    if (cvData.photo) h += '<button class="photo-btn rm" onclick="removePhoto(\'photo\')">✕ Entfernen</button>';
+    h += '        </div>';
+    h += '      </div>';
+
+    h += '      <div style="display:flex; flex-direction:column; gap:8px;">';
+    h += '        <div style="display:flex; gap:12px; align-items:center;">';
+    h += '          <div class="photo-preview" style="width:120px; height:50px;">';
+    if (cvData.signature) h += '<img src="' + escAttr(cvData.signature) + '" style="object-fit:contain">'; else h += 'Keine Unterschrift';
+    h += '          </div>';
+    h += '          <div class="photo-btns">';
+    h += '            <div style="font-size:11.5px; font-weight:600; color:var(--ui-color-text); margin-bottom:2px;">Unterschrift</div>';
+    h += '            <button class="photo-btn" onclick="document.getElementById(\'sig-input\').click()">✍️ Unterschrift wählen</button>';
+    if (cvData.signature) h += '<button class="photo-btn rm" onclick="removePhoto(\'signature\')">✕ Entfernen</button>';
+    h += '          </div>';
+    h += '        </div>';
+    h += '        <div class="fld"><label>Ort (für Unterschrift)</label><input value="' + esc(cvData.signatureLocation || '') + '" oninput="updateSigLoc(this.value)" placeholder="z.B. Berlin"></div>';
+    h += '      </div>';
+    h += '    </div>';
+    h += '  </div>';
+    h += '</div>';
+
+    h += '<div class="wide-card">';
+    h += '  <div class="wide-card-h" style="cursor:default;"><div class="wide-card-t">Kontaktdaten &amp; Angaben</div></div>';
+    h += '  <div class="wide-card-b">';
+    h += '    <div class="grid-2-eq">';
+    h += '      <div class="fld"><label>Vollständiger Name</label><input value="' + esc(cvData.personal.name) + '" oninput="updatePersonal(\'name\',this.value)"></div>';
+    h += '      <div class="fld"><label>Berufstitel / Headline</label><input value="' + esc(cvData.personal.title || '') + '" oninput="updatePersonal(\'title\',this.value)" placeholder="z.B. Senior Consultant | Prozesse &amp; Digitalisierung"><div class="fld-hint">Wird unter dem Namen angezeigt</div></div>';
+    h += '    </div>';
+    h += '    <div class="grid-3">';
+    h += '      <div class="fld"><label>Geburtsdaten</label><input value="' + esc(cvData.personal.birthdate) + '" oninput="updatePersonal(\'birthdate\',this.value)"></div>';
+    h += '      <div class="fld"><label>Telefon</label><input value="' + esc(cvData.personal.phone) + '" oninput="updatePersonal(\'phone\',this.value)"></div>';
+    h += '      <div class="fld"><label>E-Mail</label><input value="' + esc(cvData.personal.email) + '" oninput="updatePersonal(\'email\',this.value)"></div>';
+    h += '    </div>';
+    h += '    <div class="grid-2-eq">';
+    h += '      <div class="fld"><label>LinkedIn Profil-URL</label><input value="' + esc(cvData.personal.linkedin || '') + '" oninput="updatePersonal(\'linkedin\',this.value)" placeholder="linkedin.com/in/profil"></div>';
+    h += '      <div class="fld"><label>Wohnort / Anschrift</label><input value="' + esc(cvData.personal.address || '') + '" oninput="updatePersonal(\'address\',this.value)"></div>';
+    h += '    </div>';
+    h += '  </div>';
+    h += '</div>';
+
+    h += '<div class="wide-card">';
+    h += '  <div class="wide-card-h" style="cursor:default;"><div class="wide-card-t">Qualifikationsprofil / Executive Summary</div></div>';
+    h += '  <div class="wide-card-b">';
+    h += '    <div class="fld">';
+    h += '      <label>Kurzprofil (Einleitungstext für Recruiter)</label>';
+    h += '      <textarea style="min-height:95px; font-size:12.5px; line-height:1.55;" oninput="updatePersonal(\'highlight\',this.value)" placeholder="Kurze, prägnante Zusammenfassung Ihrer Kernkompetenzen und Ihres Mehrwerts...">' + esc(cvData.personal.highlight || '') + '</textarea>';
+    h += '      <div class="fld-hint">Wird in modernen Layouts als Einstiegs-Highlight dargestellt und vermittelt Recruitern in den ersten 5 Sekunden Ihre Positionierung.</div>';
+    h += '    </div>';
+    h += '  </div>';
+    h += '</div>';
+  }
+  h += closeFokusSec('personal');
+
+  // ── Sektion 2: Berufserfahrung ──
+  var isExpOpen = focusedSection === 'experience';
+  var expSummary = expTotal + ' Stationen eingetragen';
+  h += renderFokusHeader('experience', '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>', 'Berufserfahrung', expTotal, expSummary);
+  if (isExpOpen) {
+    h += '<div class="tab-pane-head" style="margin-top:2px;">';
+    h += '  <div>';
+    h += '    <div class="tab-pane-title">Berufliche Stationen</div>';
+    h += '    <div class="tab-pane-desc">Verantwortungen und messbare Erfolge (' + expTotal + ' Positionen)</div>';
+    h += '  </div>';
+    h += '  <button class="addbtn" style="width:auto; padding:7px 16px; margin:0;" onclick="addExperience()">+ Neue Position hinzufügen</button>';
+    h += '</div>';
+
+    if (cvData.experience) {
+      for (var i = 0; i < cvData.experience.length; i++) {
+        var exp = cvData.experience[i];
+        var isEd = editingExp === exp.id;
+        var cardLabel = companyDisplay(exp);
+
+        h += '<div class="ic wide-card' + (isEd ? ' ed' : '') + '" draggable="false" ondragstart="onDragStart(\'experience\',' + i + ',event)" ondragover="onDragOver(event)" ondragenter="onDragEnter(event)" ondragend="onDragEnd()" ondrop="onDrop(\'experience\',' + i + ',event)">';
+        h += '  <div class="wide-card-h" onclick="toggleExpEdit(' + exp.id + ')">';
+        h += '    <div style="display:flex; align-items:center; gap:10px; flex:1; min-width:0;">';
+        h += '      <span class="drag-handle" tabindex="0" onmousedown="enableDrag(event); event.stopPropagation();" onmouseup="disableDrag(event)" ontouchstart="enableDrag(event); event.stopPropagation();" ontouchend="disableDrag(event)" onkeydown="handleKeyboardReorder(\'experience\',' + i + ',event); event.stopPropagation();" onclick="event.stopPropagation();">⠿</span>';
+        h += '      <div style="min-width:0; flex:1;">';
+        h += '        <div class="wide-card-t">' + esc(exp.role || 'Unbenannte Position') + '</div>';
+        h += '        <div class="wide-card-s">' + esc(cardLabel || 'Keine Firma') + ' · ' + esc(exp.period || 'Kein Zeitraum') + '</div>';
+        h += '      </div>';
+        h += '    </div>';
+        h += '    <div style="display:flex; align-items:center; gap:8px;">';
+        h += '      <span style="font-size:11.5px; font-weight:600; color:' + (isEd ? 'var(--ui-color-accent)' : 'var(--ui-color-text-muted)') + ';">' + (isEd ? '▲ Einklappen' : '▼ Bearbeiten') + '</span>';
+        h += '    </div>';
+        h += '  </div>';
+
+        if (isEd) {
+          h += '  <div class="wide-card-b">';
+          h += '    <div class="grid-3">';
+          h += '      <div class="fld"><label>Firma / Konzern</label><input value="' + esc(exp.company) + '" oninput="updateExp(' + exp.id + ',\'company\',this.value)"><div class="fld-hint">Für Gruppierung nach Firmen</div></div>';
+          h += '      <div class="fld"><label>Entität / Tochtergesellschaft</label><input value="' + esc(exp.entity || '') + '" oninput="updateExp(' + exp.id + ',\'entity\',this.value)" placeholder="z.B. Muster GmbH"><div class="fld-hint">Optional</div></div>';
+          h += '      <div class="fld"><label>Zeitraum</label><input value="' + esc(exp.period) + '" oninput="updateExp(' + exp.id + ',\'period\',this.value)" placeholder="MM/YYYY - MM/YYYY"></div>';
+          h += '    </div>';
+
+          h += '    <div>';
+          h += '      <div class="fld"><label>Position / Rolle</label><input value="' + esc(exp.role) + '" oninput="updateExp(' + exp.id + ',\'role\',this.value)"></div>';
+          h += '    </div>';
+
+          h += '    <div class="fld">';
+          h += '      <label>Aufgaben &amp; messbare Erfolge (eine Zeile pro Stichpunkt)</label>';
+          h += '      <textarea style="min-height:140px; font-size:12.5px; line-height:1.55;" oninput="updateExpTasks(' + exp.id + ',this.value)">' + esc(exp.tasks.join('\n')) + '</textarea>';
+          h += '      <div class="fld-hint">Tipp: Beginnen Sie Stichpunkte mit starken Aktionsverben und quantifizieren Sie Erfolge mit Kennzahlen (z.B. %-Steigerungen, Teamgrößen, Budgets).</div>';
+          h += '    </div>';
+
+          h += '    <div style="display:flex; justify-content:flex-end; padding-top:6px; border-top:1px solid var(--ui-color-border-subtle);">';
+          h += '      <button class="delbtn" onclick="removeExperience(' + exp.id + ')">✕ Position löschen</button>';
+          h += '    </div>';
+          h += '  </div>';
+        }
+        h += '</div>';
+      }
+    }
+  }
+  h += closeFokusSec('experience');
+
+  // ── Sektion 3: Ausbildung ──
+  var isEduOpen = focusedSection === 'education';
+  var eduSummary = eduTotal > 0 ? (cvData.education[0].degree + ' (' + cvData.education[0].institution + ')') : 'Keine Ausbildung eingetragen';
+  h += renderFokusHeader('education', '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>', 'Ausbildung', eduTotal, eduSummary);
+  if (isEduOpen) {
+    h += '<div class="tab-pane-head" style="margin-top:2px;">';
+    h += '  <div>';
+    h += '    <div class="tab-pane-title">Ausbildung &amp; Studium</div>';
+    h += '    <div class="tab-pane-desc">Hochschulabschlüsse, Berufsausbildung und Schulbildung (' + eduTotal + ' Einträge)</div>';
+    h += '  </div>';
+    h += '  <button class="addbtn" style="width:auto; padding:7px 16px; margin:0;" onclick="addEducation()">+ Neue Ausbildung</button>';
+    h += '</div>';
+
+    if (cvData.education) {
+      for (var j = 0; j < cvData.education.length; j++) {
+        var edu = cvData.education[j];
+        var isEdE = editingEdu === edu.id;
+
+        h += '<div class="ic wide-card' + (isEdE ? ' ed' : '') + '" draggable="false" ondragstart="onDragStart(\'education\',' + j + ',event)" ondragover="onDragOver(event)" ondragenter="onDragEnter(event)" ondragend="onDragEnd()" ondrop="onDrop(\'education\',' + j + ',event)">';
+        h += '  <div class="wide-card-h" onclick="toggleEduEdit(' + edu.id + ')">';
+        h += '    <div style="display:flex; align-items:center; gap:10px; flex:1; min-width:0;">';
+        h += '      <span class="drag-handle" tabindex="0" onmousedown="enableDrag(event); event.stopPropagation();" onmouseup="disableDrag(event)" ontouchstart="enableDrag(event); event.stopPropagation();" ontouchend="disableDrag(event)" onkeydown="handleKeyboardReorder(\'education\',' + j + ',event); event.stopPropagation();" onclick="event.stopPropagation();">⠿</span>';
+        h += '      <div style="min-width:0; flex:1;">';
+        h += '        <div class="wide-card-t">' + esc(edu.degree || 'Abschluss') + '</div>';
+        h += '        <div class="wide-card-s">' + esc(edu.institution || 'Institution') + ' · ' + esc(edu.period || '') + '</div>';
+        h += '      </div>';
+        h += '    </div>';
+        h += '    <div style="display:flex; align-items:center; gap:8px;">';
+        h += '      <span style="font-size:11.5px; font-weight:600; color:' + (isEdE ? 'var(--ui-color-accent)' : 'var(--ui-color-text-muted)') + ';">' + (isEdE ? '▲ Einklappen' : '▼ Bearbeiten') + '</span>';
+        h += '    </div>';
+        h += '  </div>';
+
+        if (isEdE) {
+          h += '  <div class="wide-card-b">';
+          h += '    <div class="grid-3">';
+          h += '      <div class="fld"><label>Institution / Hochschule</label><input value="' + esc(edu.institution) + '" oninput="updateEdu(' + edu.id + ',\'institution\',this.value)"></div>';
+          h += '      <div class="fld"><label>Abschluss / Studiengang</label><input value="' + esc(edu.degree) + '" oninput="updateEdu(' + edu.id + ',\'degree\',this.value)"></div>';
+          h += '      <div class="fld"><label>Zeitraum</label><input value="' + esc(edu.period) + '" oninput="updateEdu(' + edu.id + ',\'period\',this.value)" placeholder="YYYY - YYYY"></div>';
+          h += '    </div>';
+          h += '    <div style="display:flex; justify-content:flex-end; padding-top:6px; border-top:1px solid var(--ui-color-border-subtle);">';
+          h += '      <button class="delbtn" onclick="removeEducation(' + edu.id + ')">✕ Eintrag löschen</button>';
+          h += '    </div>';
+          h += '  </div>';
+        }
+        h += '</div>';
+      }
+    }
+  }
+  h += closeFokusSec('education');
+
+  // ── Sektion 4: Kenntnisse & Sprachen ──
+  var isSkillsOpen = focusedSection === 'skills';
+  h += renderFokusHeader('skills', '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>', 'Kenntnisse & Sprachen', null, 'Sprachen, IT-Kenntnisse & Methoden');
+  if (isSkillsOpen) {
+    h += '<div class="wide-card">';
+    h += '  <div class="wide-card-h" style="cursor:default;"><div class="wide-card-t">Sprachkenntnisse</div></div>';
+    h += '  <div class="wide-card-b">';
+    h += '    <div class="fld">';
+    h += '      <label>Sprachen &amp; Niveaustufen</label>';
+    h += '      <textarea style="min-height:75px; font-size:12.5px; line-height:1.55;" oninput="updateSkill(\'languages\',this.value)">' + esc(cvData.skills.languages) + '</textarea>';
+    h += '      <div class="fld-hint">z.B. Deutsch (Muttersprache), Englisch (verhandlungssicher C1)</div>';
+    h += '    </div>';
+    h += '  </div>';
+    h += '</div>';
+
+    h += '<div class="wide-card">';
+    h += '  <div class="wide-card-h" style="cursor:default;"><div class="wide-card-t">Fachkenntnisse &amp; Methoden</div></div>';
+    h += '  <div class="wide-card-b">';
+    h += '    <div class="fld">';
+    h += '      <label>IT-Tools, Frameworks &amp; Fachkompetenzen</label>';
+    h += '      <textarea style="min-height:110px; font-size:12.5px; line-height:1.55;" oninput="updateSkill(\'technical\',this.value)">' + esc(cvData.skills.technical) + '</textarea>';
+    h += '      <div class="fld-hint">z.B. SAP S/4HANA (SD, MM), Business Analysis, Solution Design, FIT-GAP-Analysen, Scrum, JIRA</div>';
+    h += '    </div>';
+    h += '  </div>';
+    h += '</div>';
+
+    h += '<div class="wide-card">';
+    h += '  <div class="wide-card-h" style="cursor:default;"><div class="wide-card-t">Sonstiges &amp; Interessen</div></div>';
+    h += '  <div class="wide-card-b">';
+    h += '    <div class="fld">';
+    h += '      <label>Zusätzliche Kenntnisse, Führerschein oder private Interessen</label>';
+    h += '      <textarea style="min-height:75px; font-size:12.5px; line-height:1.55;" oninput="updateSkill(\'other\',this.value)">' + esc(cvData.skills.other) + '</textarea>';
+    h += '    </div>';
+    h += '  </div>';
+    h += '</div>';
+  }
+  h += closeFokusSec('skills');
+
+  // ── Sektion 5: Zertifikate & Weiterbildungen ──
+  var isCertOpen = focusedSection === 'certificates';
+  var certSummary = certCount > 0 ? (certCount + ' Zertifikate eingetragen') : 'Optional';
+  h += renderFokusHeader('certificates', '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="7"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/></svg>', 'Zertifikate & Weiterbildungen', certCount, certSummary);
+  if (isCertOpen) {
+    h += '<div class="tab-pane-head" style="margin-top:2px;">';
+    h += '  <div>';
+    h += '    <div class="tab-pane-title">Zertifikate &amp; Weiterbildungen</div>';
+    h += '    <div class="tab-pane-desc">Fachzertifikate und Lehrgänge (' + certCount + ' Einträge, optional)</div>';
+    h += '  </div>';
+    h += '  <button class="addbtn" style="width:auto; padding:7px 16px; margin:0;" onclick="addCertificate()">+ Neues Zertifikat</button>';
+    h += '</div>';
+
+    if (cvData.certificates) {
+      for (var ci = 0; ci < cvData.certificates.length; ci++) {
+        var cert = cvData.certificates[ci];
+        var isEdC = editingCert === cert.id;
+
+        h += '<div class="ic wide-card' + (isEdC ? ' ed' : '') + '" draggable="false" ondragstart="onDragStart(\'certificates\',' + ci + ',event)" ondragover="onDragOver(event)" ondragenter="onDragEnter(event)" ondragend="onDragEnd()" ondrop="onDrop(\'certificates\',' + ci + ',event)">';
+        h += '  <div class="wide-card-h" onclick="toggleCertEdit(' + cert.id + ')">';
+        h += '    <div style="display:flex; align-items:center; gap:10px; flex:1; min-width:0;">';
+        h += '      <span class="drag-handle" tabindex="0" onmousedown="enableDrag(event); event.stopPropagation();" onmouseup="disableDrag(event)" ontouchstart="enableDrag(event); event.stopPropagation();" ontouchend="disableDrag(event)" onkeydown="handleKeyboardReorder(\'certificates\',' + ci + ',event); event.stopPropagation();" onclick="event.stopPropagation();">⠿</span>';
+        h += '      <div style="min-width:0; flex:1;">';
+        h += '        <div class="wide-card-t">' + esc(cert.name || 'Zertifikat') + '</div>';
+        h += '        <div class="wide-card-s">' + esc(cert.issuer || '') + (cert.date ? ' · ' + esc(cert.date) : '') + '</div>';
+        h += '      </div>';
+        h += '    </div>';
+        h += '    <div style="display:flex; align-items:center; gap:8px;">';
+        h += '      <span style="font-size:11.5px; font-weight:600; color:' + (isEdC ? 'var(--ui-color-accent)' : 'var(--ui-color-text-muted)') + ';">' + (isEdC ? '▲ Einklappen' : '▼ Bearbeiten') + '</span>';
+        h += '    </div>';
+        h += '  </div>';
+
+        if (isEdC) {
+          h += '  <div class="wide-card-b">';
+          h += '    <div class="grid-3">';
+          h += '      <div class="fld"><label>Bezeichnung des Zertifikats</label><input value="' + esc(cert.name) + '" oninput="updateCert(' + cert.id + ',\'name\',this.value)"></div>';
+          h += '      <div class="fld"><label>Aussteller / Organisation</label><input value="' + esc(cert.issuer || '') + '" oninput="updateCert(' + cert.id + ',\'issuer\',this.value)"></div>';
+          h += '      <div class="fld"><label>Datum</label><input value="' + esc(cert.date || '') + '" oninput="updateCert(' + cert.id + ',\'date\',this.value)" placeholder="z.B. 03/2024"></div>';
+          h += '    </div>';
+          h += '    <div class="fld">';
+          h += '      <label>Schwerpunkte / Praxisprojekt (optional)</label>';
+          h += '      <textarea style="min-height:75px; font-size:12.5px; line-height:1.55;" oninput="updateCert(' + cert.id + ',\'details\',this.value)" placeholder="z.B. Praxisprojekt, Methoden (DMAIC) oder Stichpunkte (eine Zeile pro Punkt)">' + esc(cert.details || '') + '</textarea>';
+          h += '      <div class="fld-hint">Zeilenumbrüche werden im Lebenslauf als Aufzählungspunkte dargestellt</div>';
+          h += '    </div>';
+          h += '    <div style="display:flex; justify-content:flex-end; padding-top:6px; border-top:1px solid var(--ui-color-border-subtle);">';
+          h += '      <button class="delbtn" onclick="removeCertificate(' + cert.id + ')">✕ Zertifikat löschen</button>';
+          h += '    </div>';
+          h += '  </div>';
+        }
+        h += '</div>';
+      }
+    }
+  }
+  h += closeFokusSec('certificates');
+
+  // ── Sektion 6: Projekte & Ehrenamt ──
+  var isProjOpen = focusedSection === 'projects';
+  var projSummary = (projCount + volCount) > 0 ? (projCount + ' Projekte, ' + volCount + ' Ehrenamt') : 'Optional';
+  h += renderFokusHeader('projects', '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>', 'Projekte & Ehrenamt', (projCount + volCount), projSummary);
+  if (isProjOpen) {
+    h += '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">';
+    h += '  <div style="font-size:13px; font-weight:700; color:var(--ui-color-text);">Projekte (' + projCount + ')</div>';
+    h += '  <button class="addbtn" style="width:auto; padding:6px 14px; margin:0;" onclick="addProject()">+ Neues Projekt</button>';
+    h += '</div>';
+
+    if (cvData.projects) {
+      for (var pi = 0; pi < cvData.projects.length; pi++) {
+        var proj = cvData.projects[pi];
+        var isEdP = editingProj === proj.id;
+
+        h += '<div class="ic wide-card' + (isEdP ? ' ed' : '') + '" draggable="false" ondragstart="onDragStart(\'projects\',' + pi + ',event)" ondragover="onDragOver(event)" ondragenter="onDragEnter(event)" ondragend="onDragEnd()" ondrop="onDrop(\'projects\',' + pi + ',event)">';
+        h += '  <div class="wide-card-h" onclick="toggleProjEdit(' + proj.id + ')">';
+        h += '    <div style="display:flex; align-items:center; gap:10px; flex:1; min-width:0;">';
+        h += '      <span class="drag-handle" tabindex="0" onmousedown="enableDrag(event); event.stopPropagation();" onmouseup="disableDrag(event)" ontouchstart="enableDrag(event); event.stopPropagation();" ontouchend="disableDrag(event)" onkeydown="handleKeyboardReorder(\'projects\',' + pi + ',event); event.stopPropagation();" onclick="event.stopPropagation();">⠿</span>';
+        h += '      <div style="min-width:0; flex:1;">';
+        h += '        <div class="wide-card-t">' + esc(proj.name || 'Projektname') + '</div>';
+        h += '        <div class="wide-card-s">' + esc(proj.role || '') + (proj.period ? ' · ' + esc(proj.period) : '') + '</div>';
+        h += '      </div>';
+        h += '    </div>';
+        h += '    <div style="display:flex; align-items:center; gap:8px;">';
+        h += '      <span style="font-size:11.5px; font-weight:600; color:' + (isEdP ? 'var(--ui-color-accent)' : 'var(--ui-color-text-muted)') + ';">' + (isEdP ? '▲ Einklappen' : '▼ Bearbeiten') + '</span>';
+        h += '    </div>';
+        h += '  </div>';
+
+        if (isEdP) {
+          h += '  <div class="wide-card-b">';
+          h += '    <div class="grid-3">';
+          h += '      <div class="fld"><label>Projektname</label><input value="' + esc(proj.name) + '" oninput="updateProj(' + proj.id + ',\'name\',this.value)"></div>';
+          h += '      <div class="fld"><label>Rolle</label><input value="' + esc(proj.role || '') + '" oninput="updateProj(' + proj.id + ',\'role\',this.value)"></div>';
+          h += '      <div class="fld"><label>Zeitraum</label><input value="' + esc(proj.period || '') + '" oninput="updateProj(' + proj.id + ',\'period\',this.value)"></div>';
+          h += '    </div>';
+          h += '    <div class="fld"><label>Beschreibung (eine Zeile pro Stichpunkt)</label><textarea style="min-height:90px; font-size:12.5px; line-height:1.55;" oninput="updateProjTasks(' + proj.id + ',this.value)">' + esc((proj.tasks || []).join('\n')) + '</textarea></div>';
+          h += '    <div style="display:flex; justify-content:flex-end; padding-top:6px; border-top:1px solid var(--ui-color-border-subtle);">';
+          h += '      <button class="delbtn" onclick="removeProject(' + proj.id + ')">✕ Projekt löschen</button>';
+          h += '    </div>';
+          h += '  </div>';
+        }
+        h += '</div>';
+      }
+    }
+
+    h += '<div style="display:flex; justify-content:space-between; align-items:center; margin-top:24px; margin-bottom:10px;">';
+    h += '  <div style="font-size:13px; font-weight:700; color:var(--ui-color-text);">Ehrenamtliches Engagement (' + volCount + ')</div>';
+    h += '  <button class="addbtn" style="width:auto; padding:6px 14px; margin:0;" onclick="addVolunteer()">+ Neues Ehrenamt</button>';
+    h += '</div>';
+
+    if (cvData.volunteer) {
+      for (var vi = 0; vi < cvData.volunteer.length; vi++) {
+        var vol = cvData.volunteer[vi];
+        var isEdV = editingVol === vol.id;
+
+        h += '<div class="ic wide-card' + (isEdV ? ' ed' : '') + '" draggable="false" ondragstart="onDragStart(\'volunteer\',' + vi + ',event)" ondragover="onDragOver(event)" ondragenter="onDragEnter(event)" ondragend="onDragEnd()" ondrop="onDrop(\'volunteer\',' + vi + ',event)">';
+        h += '  <div class="wide-card-h" onclick="toggleVolEdit(' + vol.id + ')">';
+        h += '    <div style="display:flex; align-items:center; gap:10px; flex:1; min-width:0;">';
+        h += '      <span class="drag-handle" tabindex="0" onmousedown="enableDrag(event); event.stopPropagation();" onmouseup="disableDrag(event)" ontouchstart="enableDrag(event); event.stopPropagation();" ontouchend="disableDrag(event)" onkeydown="handleKeyboardReorder(\'volunteer\',' + vi + ',event); event.stopPropagation();" onclick="event.stopPropagation();">⠿</span>';
+        h += '      <div style="min-width:0; flex:1;">';
+        h += '        <div class="wide-card-t">' + esc(vol.role || 'Tätigkeit') + '</div>';
+        h += '        <div class="wide-card-s">' + esc(vol.org || '') + (vol.period ? ' · ' + esc(vol.period) : '') + '</div>';
+        h += '      </div>';
+        h += '    </div>';
+        h += '    <div style="display:flex; align-items:center; gap:8px;">';
+        h += '      <span style="font-size:11.5px; font-weight:600; color:' + (isEdV ? 'var(--ui-color-accent)' : 'var(--ui-color-text-muted)') + ';">' + (isEdV ? '▲ Einklappen' : '▼ Bearbeiten') + '</span>';
+        h += '    </div>';
+        h += '  </div>';
+
+        if (isEdV) {
+          h += '  <div class="wide-card-b">';
+          h += '    <div class="grid-3">';
+          h += '      <div class="fld"><label>Organisation</label><input value="' + esc(vol.org || '') + '" oninput="updateVol(' + vol.id + ',\'org\',this.value)"></div>';
+          h += '      <div class="fld"><label>Tätigkeit / Rolle</label><input value="' + esc(vol.role) + '" oninput="updateVol(' + vol.id + ',\'role\',this.value)"></div>';
+          h += '      <div class="fld"><label>Zeitraum</label><input value="' + esc(vol.period || '') + '" oninput="updateVol(' + vol.id + ',\'period\',this.value)"></div>';
+          h += '    </div>';
+          h += '    <div style="display:flex; justify-content:flex-end; padding-top:6px; border-top:1px solid var(--ui-color-border-subtle);">';
+          h += '      <button class="delbtn" onclick="removeVolunteer(' + vol.id + ')">✕ Ehrenamt löschen</button>';
+          h += '    </div>';
+          h += '  </div>';
+        }
+        h += '</div>';
+      }
+    }
+  }
+  h += closeFokusSec('projects');
+
+  // ── Sektion 7: Design & Dokumentensprache ──
+  var isStyleOpen = focusedSection === 'style';
+  var layoutObj = getLayouts()[currentLayout] || {};
+  var defaultAccent = layoutObj.accent || '#0077b6';
+  var activeAccent = customStyle.accentColor || defaultAccent;
+  var styleSummary = (layoutObj.name || currentLayout) + ' · ' + (outputLang === 'en' ? 'Englisch' : 'Deutsch');
+  h += renderFokusHeader('style', '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="13.5" cy="6.5" r=".5"/><circle cx="17.5" cy="10.5" r=".5"/><circle cx="8.5" cy="7.5" r=".5"/><circle cx="6.5" cy="12.5" r=".5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>', 'Design & Dokumentensprache', null, styleSummary);
+  if (isStyleOpen) {
+    h += '<div class="wide-card">';
+    h += '  <div class="wide-card-h" style="cursor:default;"><div class="wide-card-t">Ausgabesprache &amp; Akzentfarbe</div></div>';
+    h += '  <div class="wide-card-b">';
+    h += '    <div class="grid-2-eq">';
+    h += '      <div class="fld">';
+    h += '        <label>Ausgabesprache (Dokument)</label>';
+    h += '        <div class="size-row" style="margin-top:4px;">';
+    h += '          <button class="size-btn' + (outputLang === 'de' ? ' on' : '') + '" onclick="setOutputLang(\'de\')" title="Ausgabe auf Deutsch">🇩🇪 Deutsch</button>';
+    h += '          <button class="size-btn' + (outputLang === 'en' ? ' on' : '') + '" onclick="setOutputLang(\'en\')" title="Output in English">🇬🇧 English</button>';
+    h += '        </div>';
+    h += '        <div class="fld-hint">Überschriften und Beschriftungen im PDF</div>';
+    h += '      </div>';
+
+    h += '      <div class="fld">';
+    h += '        <label>Akzentfarbe</label>';
+    h += '        <div class="color-row" style="margin-top:4px;">';
+    h += '          <input type="color" class="color-picker" value="' + activeAccent + '" oninput="updateAccentColor(this.value)">';
+    h += '          <div class="color-info">' + activeAccent;
+    if (customStyle.accentColor) h += '<small>Benutzerdefiniert</small>'; else h += '<small>Layout-Standard</small>';
+    h += '          </div>';
+    if (customStyle.accentColor) h += '<button class="reset-btn" onclick="resetAccentColor()">Standard wiederherstellen</button>';
+    h += '        </div>';
+    h += '      </div>';
+    h += '    </div>';
+    h += '  </div>';
+    h += '</div>';
+
+    h += '<div class="wide-card">';
+    h += '  <div class="wide-card-h" style="cursor:default;"><div class="wide-card-t">Typografie &amp; Schriftgröße</div></div>';
+    h += '  <div class="wide-card-b">';
+    h += '    <div class="grid-2-eq">';
+
+    h += '      <div class="fld">';
+    h += '        <label>Schriftart</label>';
+    h += '        <select class="font-select" onchange="updateFontFamily(this.value)">';
+    var fonts = [
+      { val: '', label: 'Layout-Standard' },
+      { val: "'Roboto', sans-serif", label: 'Roboto' },
+      { val: "'Segoe UI', 'Helvetica Neue', sans-serif", label: 'Segoe UI' },
+      { val: "'Calibri', 'Helvetica', sans-serif", label: 'Calibri' },
+      { val: "'Arial', sans-serif", label: 'Arial' },
+      { val: "'Georgia', 'Palatino', serif", label: 'Georgia (Serif)' },
+      { val: "'Garamond', 'Times New Roman', serif", label: 'Garamond (Serif)' },
+      { val: "'Trebuchet MS', 'Gill Sans', sans-serif", label: 'Trebuchet MS' },
+      { val: "'Verdana', 'Geneva', sans-serif", label: 'Verdana' },
+      { val: "'Tahoma', sans-serif", label: 'Tahoma' },
+      { val: "'Century Gothic', 'CenturyGothic', sans-serif", label: 'Century Gothic' }
+    ];
+    for (var fi = 0; fi < fonts.length; fi++) {
+      var sel = customStyle.fontFamily === fonts[fi].val ? ' selected' : '';
+      h += '<option value="' + esc(fonts[fi].val) + '"' + sel + ' style="font-family:' + fonts[fi].val + '">' + esc(fonts[fi].label) + '</option>';
+    }
+    h += '        </select>';
+    h += '      </div>';
+
+    var sizes = [
+      { val: '', label: 'Std', desc: 'Layout-Standard' },
+      { val: '8.5px', label: 'XS', desc: 'Sehr klein' },
+      { val: '9px', label: 'S', desc: 'Klein' },
+      { val: '9.5px', label: 'M', desc: 'Mittel' },
+      { val: '10px', label: 'L', desc: 'Groß' },
+      { val: '10.5px', label: 'XL', desc: 'Sehr groß' }
+    ];
+    h += '      <div class="fld">';
+    h += '        <label>Schriftgröße</label>';
+    h += '        <div class="size-row" style="margin-top:4px;">';
+    for (var si = 0; si < sizes.length; si++) {
+      var isActive = customStyle.fontSize === sizes[si].val;
+      h += '<button class="size-btn' + (isActive ? ' on' : '') + '" onclick="updateFontSize(\'' + sizes[si].val + '\')" title="' + esc(sizes[si].desc) + '">';
+      h += esc(sizes[si].label) + '</button>';
+    }
+    h += '        </div>';
+    h += '      </div>';
+    h += '    </div>';
+    h += '  </div>';
+    h += '</div>';
+  }
+  h += closeFokusSec('style');
+
+  body.innerHTML = h;
+  body.scrollTop = st;
+}
+var undoStack = [];
+var redoStack = [];
+var MAX_STACK_SIZE = 50;
+var isApplyingHistory = false;
+
+function saveToLocalStorage() {
+  try {
+    var dataToSave = {
+      cvData: cvData,
+      currentLayout: currentLayout,
+      grouping: grouping,
+      customStyle: customStyle,
+      outputLang: outputLang
+    };
+    var stateStr = JSON.stringify(dataToSave);
+    localStorage.setItem('cv_builder_autosave', stateStr);
+    showAutosaveStatus();
+    
+    // Auto-push history state if not currently performing undo/redo
+    if (!isApplyingHistory) {
+      if (undoStack.length === 0 || undoStack[undoStack.length - 1] !== stateStr) {
+        undoStack.push(stateStr);
+        if (undoStack.length > MAX_STACK_SIZE) {
+          undoStack.shift();
+        }
+        redoStack = [];
+        updateHistoryButtons();
+      }
+    }
+  } catch (err) {
+    console.error('Error autosaving:', err);
+  }
+}
+
+function showAutosaveStatus() {
+  var statusEl = document.getElementById('save-status');
+  if (statusEl) {
+    var now = new Date();
+    var hh = String(now.getHours()).padStart(2, '0');
+    var mm = String(now.getMinutes()).padStart(2, '0');
+    var ss = String(now.getSeconds()).padStart(2, '0');
+    statusEl.textContent = 'Gespeichert ' + hh + ':' + mm + ':' + ss;
+    statusEl.style.opacity = '1';
+  }
+}
+
+function loadFromLocalStorage() {
+  try {
+    var saved = localStorage.getItem('cv_builder_autosave');
+    if (saved) {
+      var parsed = JSON.parse(saved);
+      if (parsed && parsed.cvData) {
+        cvData = normalizeCVData(parsed.cvData);
+        currentLayout = getLayouts()[parsed.currentLayout] ? parsed.currentLayout : 'klassisch';
+        grouping = parsed.grouping === 'company' ? 'company' : 'position';
+        customStyle = parsed.customStyle && typeof parsed.customStyle === 'object' ? parsed.customStyle : { accentColor: '', fontFamily: '', fontSize: '', outputLang: 'de' };
+        outputLang = parsed.outputLang || (customStyle && customStyle.outputLang) || 'de';
+        customStyle.outputLang = outputLang;
+      }
+    }
+  } catch (err) {
+    console.error('Error loading autosave:', err);
+  }
+}
+
+function undo() {
+  if (undoStack.length <= 1) return;
+  
+  isApplyingHistory = true;
+  var currentState = undoStack.pop();
+  redoStack.push(currentState);
+  
+  var prevStateStr = undoStack[undoStack.length - 1];
+  applyHistoryState(prevStateStr);
+  isApplyingHistory = false;
+  
+  updateHistoryButtons();
+}
+
+function redo() {
+  if (redoStack.length === 0) return;
+  
+  isApplyingHistory = true;
+  var nextStateStr = redoStack.pop();
+  undoStack.push(nextStateStr);
+  
+  applyHistoryState(nextStateStr);
+  isApplyingHistory = false;
+  
+  updateHistoryButtons();
+}
+
+function applyHistoryState(stateStr) {
+  try {
+    var parsed = JSON.parse(stateStr);
+    if (parsed && parsed.cvData) {
+      cvData = normalizeCVData(parsed.cvData);
+      currentLayout = getLayouts()[parsed.currentLayout] ? parsed.currentLayout : 'klassisch';
+      grouping = parsed.grouping === 'company' ? 'company' : 'position';
+      customStyle = parsed.customStyle || { accentColor: '', fontFamily: '', fontSize: '', outputLang: 'de' };
+      outputLang = parsed.outputLang || (customStyle && customStyle.outputLang) || 'de';
+      customStyle.outputLang = outputLang;
+
+      renderAll();
+      syncModeButtons();
+    }
+  } catch (err) {
+    console.error('Error applying history state:', err);
+  }
+}
+
+function updateHistoryButtons() {
+  var undoBtn = document.getElementById('btn-undo');
+  var redoBtn = document.getElementById('btn-redo');
+  
+  if (undoBtn) {
+    var canUndo = undoStack.length > 1;
+    undoBtn.disabled = !canUndo;
+    undoBtn.style.color = canUndo ? 'var(--ui-color-text)' : 'var(--ui-color-text-muted)';
+    undoBtn.style.cursor = canUndo ? 'pointer' : 'not-allowed';
+    undoBtn.style.background = canUndo ? 'var(--ui-color-accent-soft)' : 'transparent';
+  }
+  if (redoBtn) {
+    var canRedo = redoStack.length > 0;
+    redoBtn.disabled = !canRedo;
+    redoBtn.style.color = canRedo ? 'var(--ui-color-text)' : 'var(--ui-color-text-muted)';
+    redoBtn.style.cursor = canRedo ? 'pointer' : 'not-allowed';
+    redoBtn.style.background = canRedo ? 'var(--ui-color-accent-soft)' : 'transparent';
+  }
+}
+
+function resetToDefaultExample() {
+  if (confirm('Möchten Sie Ihren Lebenslauf wirklich auf das Standard-Beispiel zurücksetzen? Alle aktuellen Änderungen gehen verloren.')) {
+    cvData = normalizeCVData(JSON.parse(JSON.stringify(DEFAULT_CV_DATA)));
+    currentLayout = 'klassisch';
+    grouping = 'position';
+    outputLang = 'de';
+    customStyle = { accentColor: '', fontFamily: '', fontSize: '', outputLang: 'de' };
+    
+    saveToLocalStorage();
+    renderAll();
+    syncModeButtons();
+  }
+}
+
+function renderAll() {
+  buildLayoutButtons();
+  applyLayoutCSS();
+  renderEditor();
+  renderPreviewImmediate();
+}
+
+// Global keyboard shortcuts (Ctrl+Z, Ctrl+Y)
+window.addEventListener('keydown', function(e) {
+  var isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+  var cmd = isMac ? e.metaKey : e.ctrlKey;
+  
+  if (cmd && !e.altKey) {
+    var key = e.key.toLowerCase();
+    if (key === 'z') {
+      e.preventDefault();
+      if (e.shiftKey) {
+        redo();
+      } else {
+        undo();
+      }
+    } else if (key === 'y') {
+      e.preventDefault();
+      redo();
+    }
+  }
+});
+
+// Sync button states on load
+loadFromLocalStorage();
+renderAll();
+syncModeButtons();
+
+// Initialize history state on load
+if (undoStack.length === 0) {
+  var initialStateStr = JSON.stringify({
+    cvData: cvData,
+    currentLayout: currentLayout,
+    grouping: grouping,
+    customStyle: customStyle,
+    outputLang: outputLang
+  });
+  undoStack.push(initialStateStr);
+  updateHistoryButtons();
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,214 @@
+/*
+ * Design-Tokens der Oberfläche: Farben, Schrift, Abstände, Radien, Bewegung.
+ * Das Dunkel-Thema ist vorbereitet, aber nicht aktiviert (data-ui-theme="dark").
+ */
+:root,
+[data-ui-theme='light'] {
+  color-scheme: light;
+
+  --ui-color-canvas: #f1f3f5;
+  --ui-color-surface: #ffffff;
+  --ui-color-surface-raised: #ffffff;
+  --ui-color-surface-overview: #f7f9fc;
+  --ui-color-surface-supporting: #f8f9fb;
+  --ui-color-text: #2e3a59;
+  --ui-color-text-muted: #56637b;
+  --ui-color-border: #cbd3dc;
+  --ui-color-border-subtle: #eef0f3;
+  --ui-color-accent: #2e3a59;
+  --ui-color-accent-hover: #25314d;
+  --ui-color-accent-pressed: #1d273d;
+  --ui-color-on-accent: #ffffff;
+  --ui-color-accent-soft: #e4e9f0;
+  --ui-color-shell-navigation: #2e3a59;
+  --ui-color-shell-navigation-hover: #3a4768;
+  --ui-color-shell-navigation-active: #465475;
+  --ui-color-on-shell-navigation: #ffffff;
+  --ui-color-on-shell-navigation-muted: #d8dee9;
+  --ui-color-shell-navigation-divider: rgba(255, 255, 255, 0.22);
+  --ui-color-destructive: #b42318;
+  --ui-color-destructive-hover: #912018;
+  --ui-color-destructive-pressed: #781b14;
+  --ui-color-on-destructive: #ffffff;
+  --ui-color-overlay: rgba(27, 31, 39, 0.42);
+  --ui-color-status-success: #15803d;
+  --ui-color-status-success-soft: #f0fdf4;
+  --ui-color-status-warning: #a24a08;
+  --ui-color-status-warning-soft: #fffbeb;
+  --ui-color-status-critical: #b91c1c;
+  --ui-color-status-critical-soft: #fef2f2;
+  --ui-color-status-info: #2563eb;
+  --ui-color-status-info-soft: #eff6ff;
+  --ui-shadow-raised: 0 12px 32px rgba(27, 31, 39, 0.16);
+  --ui-shadow-subtle: 0 0.125rem 0.75rem rgba(27, 31, 39, 0.08);
+}
+
+[data-ui-theme='dark'] {
+  color-scheme: dark;
+
+  --ui-color-canvas: #1b1f27;
+  --ui-color-surface: #232731;
+  --ui-color-surface-raised: #292e39;
+  --ui-color-surface-overview: #272d39;
+  --ui-color-surface-supporting: #20242c;
+  --ui-color-text: #d8dee9;
+  --ui-color-text-muted: #a3acb9;
+  --ui-color-border: #363b47;
+  --ui-color-border-subtle: rgba(255, 255, 255, 0.06);
+  --ui-color-accent: #9ab0d3;
+  --ui-color-accent-hover: #aec0dc;
+  --ui-color-accent-pressed: #c1cee2;
+  --ui-color-on-accent: #1b1f27;
+  --ui-color-accent-soft: #303a4a;
+  --ui-color-shell-navigation: #171c26;
+  --ui-color-shell-navigation-hover: #2d3442;
+  --ui-color-shell-navigation-active: #3a4558;
+  --ui-color-on-shell-navigation: #f4f6f8;
+  --ui-color-on-shell-navigation-muted: #c5ccd7;
+  --ui-color-shell-navigation-divider: rgba(255, 255, 255, 0.2);
+  --ui-color-destructive: #da6069;
+  --ui-color-destructive-hover: #e57e87;
+  --ui-color-destructive-pressed: #ee9ba2;
+  --ui-color-on-destructive: #1b1f27;
+  --ui-color-overlay: rgba(0, 0, 0, 0.58);
+  --ui-color-status-success: #76c792;
+  --ui-color-status-success-soft: #1f3328;
+  --ui-color-status-warning: #e5ab65;
+  --ui-color-status-warning-soft: #3a2d1f;
+  --ui-color-status-critical: #e57e87;
+  --ui-color-status-critical-soft: #3b2428;
+  --ui-color-status-info: #9ab0d3;
+  --ui-color-status-info-soft: #273449;
+  --ui-shadow-raised: 0 16px 38px rgba(0, 0, 0, 0.34);
+  --ui-shadow-subtle: 0 0.125rem 0.875rem rgba(0, 0, 0, 0.24);
+}
+
+:root {
+  --ui-font-sans: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --ui-font-mono: 'Cascadia Code', 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  --ui-font-size-shell: 0.75rem;
+  --ui-font-size-body: 0.8125rem;
+  --ui-font-size-navigation: 0.875rem;
+  --ui-font-size-title: 1.375rem;
+  --ui-line-height-body: 1.45;
+
+  --ui-space-1: 0.25rem;
+  --ui-space-2: 0.5rem;
+  --ui-space-3: 0.75rem;
+  --ui-space-4: 1rem;
+  --ui-space-5: 1.25rem;
+  --ui-space-6: 1.5rem;
+  --ui-space-7: 2rem;
+
+  --ui-radius-1: 0.25rem;
+  --ui-radius-2: 0.375rem;
+  --ui-radius-3: 0.5rem;
+  --ui-radius-4: 0.625rem;
+  --ui-radius-5: 0.75rem;
+  --ui-radius-round: 999rem;
+
+  --ui-control-compact: 1.75rem;
+  --ui-control-default: 2rem;
+  --ui-control-large: 2.5rem;
+  --ui-hit-target: 2rem;
+  --ui-border-width: 0.0625rem;
+  --ui-active-border-width: 0.125rem;
+  --ui-icon-sm: 0.875rem;
+  --ui-icon-md: 1rem;
+  --ui-icon-lg: 1.25rem;
+  --ui-icon-stroke: 1.75;
+  --ui-reflow-min: 20rem;
+  --ui-opacity-disabled: 0.68;
+  --ui-opacity-skeleton-start: 0.55;
+  --ui-color-transparent: transparent;
+
+  --ui-focus-width: 0.125rem;
+  --ui-focus-gap: 0.125rem;
+  --ui-focus-color: var(--ui-color-accent);
+
+  --ui-motion-fast: 150ms;
+  --ui-motion-default: 220ms;
+  --ui-motion-slow: 300ms;
+  --ui-motion-easing: cubic-bezier(0.2, 0, 0, 1);
+  --ui-motion-easing-linear: linear;
+
+  --ui-layer-shell: 10;
+  --ui-layer-rail: 20;
+  --ui-layer-overlay: 40;
+  --ui-layer-popover: 45;
+  --ui-layer-dialog: 50;
+  --ui-layer-toast: 60;
+  --ui-layer-tooltip: 70;
+
+  --ui-shell-topbar: 3.25rem;
+  --ui-shell-area-nav: calc(
+    var(--ui-density-control) + var(--ui-space-2) + var(--ui-border-width)
+  );
+  --ui-shell-tabs: calc(var(--ui-control-default) + var(--ui-space-2));
+  --ui-shell-notification-rail: 3rem;
+  --ui-shell-notification-panel: 18.75rem;
+  --ui-shell-panel-header: 2.75rem;
+  --ui-shell-workspace-gap: 0.375rem;
+  --ui-layout-dialog-sm: 26rem;
+  --ui-layout-dialog-md: 36rem;
+  --ui-layout-dialog-lg: 48rem;
+  --ui-layout-dialog-fixed-block: 40rem;
+  --ui-layout-scroll-max-block: 24rem;
+}
+
+:root,
+[data-ui-density='compact'] {
+  --ui-density-control: var(--ui-control-default);
+  --ui-density-block-gap: var(--ui-space-2);
+}
+
+[data-ui-density='comfortable'] {
+  --ui-density-control: var(--ui-control-large);
+  --ui-density-block-gap: var(--ui-space-3);
+  --ui-shell-tabs: calc(var(--ui-control-large) + var(--ui-space-2));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --ui-motion-fast: 0.01ms;
+    --ui-motion-default: 0.01ms;
+    --ui-motion-slow: 0.01ms;
+  }
+}
+
+@media (forced-colors: active) {
+  :root,
+  [data-ui-theme='light'],
+  [data-ui-theme='dark'] {
+    --ui-color-canvas: Canvas;
+    --ui-color-surface: Canvas;
+    --ui-color-surface-raised: Canvas;
+    --ui-color-surface-overview: Canvas;
+    --ui-color-surface-supporting: Canvas;
+    --ui-color-text: CanvasText;
+    --ui-color-text-muted: GrayText;
+    --ui-color-border: ButtonBorder;
+    --ui-color-border-subtle: ButtonBorder;
+    --ui-color-accent: Highlight;
+    --ui-color-accent-hover: Highlight;
+    --ui-color-accent-pressed: Highlight;
+    --ui-color-on-accent: HighlightText;
+    --ui-color-accent-soft: Canvas;
+    --ui-color-destructive: Highlight;
+    --ui-color-destructive-hover: Highlight;
+    --ui-color-destructive-pressed: Highlight;
+    --ui-color-on-destructive: HighlightText;
+    --ui-color-overlay: Canvas;
+    --ui-color-status-success: CanvasText;
+    --ui-color-status-success-soft: Canvas;
+    --ui-color-status-warning: CanvasText;
+    --ui-color-status-warning-soft: Canvas;
+    --ui-color-status-critical: CanvasText;
+    --ui-color-status-critical-soft: Canvas;
+    --ui-color-status-info: CanvasText;
+    --ui-color-status-info-soft: Canvas;
+    --ui-focus-color: Highlight;
+    --ui-shadow-raised: none;
+    --ui-shadow-subtle: none;
+  }
+}
