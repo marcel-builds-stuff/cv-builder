@@ -1,7 +1,7 @@
 # CV Builder
 
 Lebenslauf-Editor für deutsche Bewerbungen, der vollständig im Browser läuft.
-Eine HTML-Datei, kein Konto, keine Installation, kein Server.
+Lokal ausführbar: keine Installation, kein Konto, kein Server.
 
 ![Editor links, Vorschau mit A4-Seiten rechts](docs/screenshot.png)
 

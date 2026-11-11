@@ -272,6 +272,42 @@ function sanitizeImage(src) {
   return clean;
 }
 
+// Design choices offered in the editor. Values from imported files or the
+// browser storage are only accepted if they match one of these, because they
+// end up in CSS and HTML.
+var FONT_CHOICES = [
+  { val: '', label: 'Layout-Standard' },
+  { val: "'Roboto', sans-serif", label: 'Roboto' },
+  { val: "'Segoe UI', 'Helvetica Neue', sans-serif", label: 'Segoe UI' },
+  { val: "'Calibri', 'Helvetica', sans-serif", label: 'Calibri' },
+  { val: "'Arial', sans-serif", label: 'Arial' },
+  { val: "'Georgia', 'Palatino', serif", label: 'Georgia (Serif)' },
+  { val: "'Garamond', 'Times New Roman', serif", label: 'Garamond (Serif)' },
+  { val: "'Trebuchet MS', 'Gill Sans', sans-serif", label: 'Trebuchet MS' },
+  { val: "'Verdana', 'Geneva', sans-serif", label: 'Verdana' },
+  { val: "'Tahoma', sans-serif", label: 'Tahoma' },
+  { val: "'Century Gothic', 'CenturyGothic', sans-serif", label: 'Century Gothic' }
+];
+var FONT_SIZE_CHOICES = [
+  { val: '', label: 'Std', desc: 'Layout-Standard' },
+  { val: '8.5px', label: 'XS', desc: 'Sehr klein' },
+  { val: '9px', label: 'S', desc: 'Klein' },
+  { val: '9.5px', label: 'M', desc: 'Mittel' },
+  { val: '10px', label: 'L', desc: 'Groß' },
+  { val: '10.5px', label: 'XL', desc: 'Sehr groß' }
+];
+
+function normalizeCustomStyle(cs) {
+  cs = cs && typeof cs === 'object' ? cs : {};
+  var inList = function (list, v) { return list.some(function (item) { return item.val === v; }); };
+  return {
+    accentColor: typeof cs.accentColor === 'string' && /^#[0-9a-f]{6}$/i.test(cs.accentColor) ? cs.accentColor : '',
+    fontFamily: inList(FONT_CHOICES, cs.fontFamily) ? cs.fontFamily : '',
+    fontSize: inList(FONT_SIZE_CHOICES, cs.fontSize) ? cs.fontSize : '',
+    outputLang: cs.outputLang === 'en' ? 'en' : 'de'
+  };
+}
+
 function asText(value) {
   if (value === undefined || value === null) return '';
   return typeof value === 'string' ? value : String(value);
@@ -1199,7 +1235,7 @@ function buildLayoutButtons() {
   for (var key in layouts) {
     if (!layouts.hasOwnProperty(key)) continue;
     var l = layouts[key];
-    html += '<button class="seg-btn'+(key===currentLayout?' on':'')+'" data-lay="'+key+'" onclick="setLayout(\''+key+'\')" title="'+esc(l.desc)+'">';
+    html += '<button class="seg-btn'+(key===currentLayout?' on':'')+'" data-lay="'+key+'" onclick="setLayout(\''+key+'\')" title="'+escAttr(l.desc)+'">';
     html += '<span class="dot" style="background:'+l.accent+'"></span>'+esc(l.name)+'</button>';
   }
   container.innerHTML = html;
@@ -1409,12 +1445,7 @@ function importJSON(ev) {
         delete d._builder;
 
         if (d.customStyle && typeof d.customStyle === 'object') {
-          customStyle = {
-            accentColor: asText(d.customStyle.accentColor),
-            fontFamily: asText(d.customStyle.fontFamily),
-            fontSize: asText(d.customStyle.fontSize),
-            outputLang: d.customStyle.outputLang === 'en' ? 'en' : 'de'
-          };
+          customStyle = normalizeCustomStyle(d.customStyle);
           outputLang = customStyle.outputLang;
           delete d.customStyle;
         } else {
@@ -1958,7 +1989,7 @@ function renderEditor() {
     if (cvData.signature) h += '<button class="photo-btn rm" onclick="removePhoto(\'signature\')">✕ Entfernen</button>';
     h += '          </div>';
     h += '        </div>';
-    h += '        <div class="fld"><label>Ort (für Unterschrift)</label><input value="' + esc(cvData.signatureLocation || '') + '" oninput="updateSigLoc(this.value)" placeholder="z.B. Berlin"></div>';
+    h += '        <div class="fld"><label>Ort (für Unterschrift)</label><input value="' + escAttr(cvData.signatureLocation || '') + '" oninput="updateSigLoc(this.value)" placeholder="z.B. Berlin"></div>';
     h += '      </div>';
     h += '    </div>';
     h += '  </div>';
@@ -1968,17 +1999,17 @@ function renderEditor() {
     h += '  <div class="wide-card-h" style="cursor:default;"><div class="wide-card-t">Kontaktdaten &amp; Angaben</div></div>';
     h += '  <div class="wide-card-b">';
     h += '    <div class="grid-2-eq">';
-    h += '      <div class="fld"><label>Vollständiger Name</label><input value="' + esc(cvData.personal.name) + '" oninput="updatePersonal(\'name\',this.value)"></div>';
-    h += '      <div class="fld"><label>Berufstitel / Headline</label><input value="' + esc(cvData.personal.title || '') + '" oninput="updatePersonal(\'title\',this.value)" placeholder="z.B. Senior Consultant | Prozesse &amp; Digitalisierung"><div class="fld-hint">Wird unter dem Namen angezeigt</div></div>';
+    h += '      <div class="fld"><label>Vollständiger Name</label><input value="' + escAttr(cvData.personal.name) + '" oninput="updatePersonal(\'name\',this.value)"></div>';
+    h += '      <div class="fld"><label>Berufstitel / Headline</label><input value="' + escAttr(cvData.personal.title || '') + '" oninput="updatePersonal(\'title\',this.value)" placeholder="z.B. Senior Consultant | Prozesse &amp; Digitalisierung"><div class="fld-hint">Wird unter dem Namen angezeigt</div></div>';
     h += '    </div>';
     h += '    <div class="grid-3">';
-    h += '      <div class="fld"><label>Geburtsdaten</label><input value="' + esc(cvData.personal.birthdate) + '" oninput="updatePersonal(\'birthdate\',this.value)"></div>';
-    h += '      <div class="fld"><label>Telefon</label><input value="' + esc(cvData.personal.phone) + '" oninput="updatePersonal(\'phone\',this.value)"></div>';
-    h += '      <div class="fld"><label>E-Mail</label><input value="' + esc(cvData.personal.email) + '" oninput="updatePersonal(\'email\',this.value)"></div>';
+    h += '      <div class="fld"><label>Geburtsdaten</label><input value="' + escAttr(cvData.personal.birthdate) + '" oninput="updatePersonal(\'birthdate\',this.value)"></div>';
+    h += '      <div class="fld"><label>Telefon</label><input value="' + escAttr(cvData.personal.phone) + '" oninput="updatePersonal(\'phone\',this.value)"></div>';
+    h += '      <div class="fld"><label>E-Mail</label><input value="' + escAttr(cvData.personal.email) + '" oninput="updatePersonal(\'email\',this.value)"></div>';
     h += '    </div>';
     h += '    <div class="grid-2-eq">';
-    h += '      <div class="fld"><label>LinkedIn Profil-URL</label><input value="' + esc(cvData.personal.linkedin || '') + '" oninput="updatePersonal(\'linkedin\',this.value)" placeholder="linkedin.com/in/profil"></div>';
-    h += '      <div class="fld"><label>Wohnort / Anschrift</label><input value="' + esc(cvData.personal.address || '') + '" oninput="updatePersonal(\'address\',this.value)"></div>';
+    h += '      <div class="fld"><label>LinkedIn Profil-URL</label><input value="' + escAttr(cvData.personal.linkedin || '') + '" oninput="updatePersonal(\'linkedin\',this.value)" placeholder="linkedin.com/in/profil"></div>';
+    h += '      <div class="fld"><label>Wohnort / Anschrift</label><input value="' + escAttr(cvData.personal.address || '') + '" oninput="updatePersonal(\'address\',this.value)"></div>';
     h += '    </div>';
     h += '  </div>';
     h += '</div>';
@@ -2032,13 +2063,13 @@ function renderEditor() {
         if (isEd) {
           h += '  <div class="wide-card-b">';
           h += '    <div class="grid-3">';
-          h += '      <div class="fld"><label>Firma / Konzern</label><input value="' + esc(exp.company) + '" oninput="updateExp(' + exp.id + ',\'company\',this.value)"><div class="fld-hint">Für Gruppierung nach Firmen</div></div>';
-          h += '      <div class="fld"><label>Entität / Tochtergesellschaft</label><input value="' + esc(exp.entity || '') + '" oninput="updateExp(' + exp.id + ',\'entity\',this.value)" placeholder="z.B. Muster GmbH"><div class="fld-hint">Optional</div></div>';
-          h += '      <div class="fld"><label>Zeitraum</label><input value="' + esc(exp.period) + '" oninput="updateExp(' + exp.id + ',\'period\',this.value)" placeholder="MM/YYYY - MM/YYYY"></div>';
+          h += '      <div class="fld"><label>Firma / Konzern</label><input value="' + escAttr(exp.company) + '" oninput="updateExp(' + exp.id + ',\'company\',this.value)"><div class="fld-hint">Für Gruppierung nach Firmen</div></div>';
+          h += '      <div class="fld"><label>Entität / Tochtergesellschaft</label><input value="' + escAttr(exp.entity || '') + '" oninput="updateExp(' + exp.id + ',\'entity\',this.value)" placeholder="z.B. Muster GmbH"><div class="fld-hint">Optional</div></div>';
+          h += '      <div class="fld"><label>Zeitraum</label><input value="' + escAttr(exp.period) + '" oninput="updateExp(' + exp.id + ',\'period\',this.value)" placeholder="MM/YYYY - MM/YYYY"></div>';
           h += '    </div>';
 
           h += '    <div>';
-          h += '      <div class="fld"><label>Position / Rolle</label><input value="' + esc(exp.role) + '" oninput="updateExp(' + exp.id + ',\'role\',this.value)"></div>';
+          h += '      <div class="fld"><label>Position / Rolle</label><input value="' + escAttr(exp.role) + '" oninput="updateExp(' + exp.id + ',\'role\',this.value)"></div>';
           h += '    </div>';
 
           h += '    <div class="fld">';
@@ -2093,9 +2124,9 @@ function renderEditor() {
         if (isEdE) {
           h += '  <div class="wide-card-b">';
           h += '    <div class="grid-3">';
-          h += '      <div class="fld"><label>Institution / Hochschule</label><input value="' + esc(edu.institution) + '" oninput="updateEdu(' + edu.id + ',\'institution\',this.value)"></div>';
-          h += '      <div class="fld"><label>Abschluss / Studiengang</label><input value="' + esc(edu.degree) + '" oninput="updateEdu(' + edu.id + ',\'degree\',this.value)"></div>';
-          h += '      <div class="fld"><label>Zeitraum</label><input value="' + esc(edu.period) + '" oninput="updateEdu(' + edu.id + ',\'period\',this.value)" placeholder="YYYY - YYYY"></div>';
+          h += '      <div class="fld"><label>Institution / Hochschule</label><input value="' + escAttr(edu.institution) + '" oninput="updateEdu(' + edu.id + ',\'institution\',this.value)"></div>';
+          h += '      <div class="fld"><label>Abschluss / Studiengang</label><input value="' + escAttr(edu.degree) + '" oninput="updateEdu(' + edu.id + ',\'degree\',this.value)"></div>';
+          h += '      <div class="fld"><label>Zeitraum</label><input value="' + escAttr(edu.period) + '" oninput="updateEdu(' + edu.id + ',\'period\',this.value)" placeholder="YYYY - YYYY"></div>';
           h += '    </div>';
           h += '    <div style="display:flex; justify-content:flex-end; padding-top:6px; border-top:1px solid var(--ui-color-border-subtle);">';
           h += '      <button class="delbtn" onclick="removeEducation(' + edu.id + ')">✕ Eintrag löschen</button>';
@@ -2181,9 +2212,9 @@ function renderEditor() {
         if (isEdC) {
           h += '  <div class="wide-card-b">';
           h += '    <div class="grid-3">';
-          h += '      <div class="fld"><label>Bezeichnung des Zertifikats</label><input value="' + esc(cert.name) + '" oninput="updateCert(' + cert.id + ',\'name\',this.value)"></div>';
-          h += '      <div class="fld"><label>Aussteller / Organisation</label><input value="' + esc(cert.issuer || '') + '" oninput="updateCert(' + cert.id + ',\'issuer\',this.value)"></div>';
-          h += '      <div class="fld"><label>Datum</label><input value="' + esc(cert.date || '') + '" oninput="updateCert(' + cert.id + ',\'date\',this.value)" placeholder="z.B. 03/2024"></div>';
+          h += '      <div class="fld"><label>Bezeichnung des Zertifikats</label><input value="' + escAttr(cert.name) + '" oninput="updateCert(' + cert.id + ',\'name\',this.value)"></div>';
+          h += '      <div class="fld"><label>Aussteller / Organisation</label><input value="' + escAttr(cert.issuer || '') + '" oninput="updateCert(' + cert.id + ',\'issuer\',this.value)"></div>';
+          h += '      <div class="fld"><label>Datum</label><input value="' + escAttr(cert.date || '') + '" oninput="updateCert(' + cert.id + ',\'date\',this.value)" placeholder="z.B. 03/2024"></div>';
           h += '    </div>';
           h += '    <div class="fld">';
           h += '      <label>Schwerpunkte / Praxisprojekt (optional)</label>';
@@ -2233,9 +2264,9 @@ function renderEditor() {
         if (isEdP) {
           h += '  <div class="wide-card-b">';
           h += '    <div class="grid-3">';
-          h += '      <div class="fld"><label>Projektname</label><input value="' + esc(proj.name) + '" oninput="updateProj(' + proj.id + ',\'name\',this.value)"></div>';
-          h += '      <div class="fld"><label>Rolle</label><input value="' + esc(proj.role || '') + '" oninput="updateProj(' + proj.id + ',\'role\',this.value)"></div>';
-          h += '      <div class="fld"><label>Zeitraum</label><input value="' + esc(proj.period || '') + '" oninput="updateProj(' + proj.id + ',\'period\',this.value)"></div>';
+          h += '      <div class="fld"><label>Projektname</label><input value="' + escAttr(proj.name) + '" oninput="updateProj(' + proj.id + ',\'name\',this.value)"></div>';
+          h += '      <div class="fld"><label>Rolle</label><input value="' + escAttr(proj.role || '') + '" oninput="updateProj(' + proj.id + ',\'role\',this.value)"></div>';
+          h += '      <div class="fld"><label>Zeitraum</label><input value="' + escAttr(proj.period || '') + '" oninput="updateProj(' + proj.id + ',\'period\',this.value)"></div>';
           h += '    </div>';
           h += '    <div class="fld"><label>Beschreibung (eine Zeile pro Stichpunkt)</label><textarea style="min-height:90px; font-size:12.5px; line-height:1.55;" oninput="updateProjTasks(' + proj.id + ',this.value)">' + esc((proj.tasks || []).join('\n')) + '</textarea></div>';
           h += '    <div style="display:flex; justify-content:flex-end; padding-top:6px; border-top:1px solid var(--ui-color-border-subtle);">';
@@ -2274,9 +2305,9 @@ function renderEditor() {
         if (isEdV) {
           h += '  <div class="wide-card-b">';
           h += '    <div class="grid-3">';
-          h += '      <div class="fld"><label>Organisation</label><input value="' + esc(vol.org || '') + '" oninput="updateVol(' + vol.id + ',\'org\',this.value)"></div>';
-          h += '      <div class="fld"><label>Tätigkeit / Rolle</label><input value="' + esc(vol.role) + '" oninput="updateVol(' + vol.id + ',\'role\',this.value)"></div>';
-          h += '      <div class="fld"><label>Zeitraum</label><input value="' + esc(vol.period || '') + '" oninput="updateVol(' + vol.id + ',\'period\',this.value)"></div>';
+          h += '      <div class="fld"><label>Organisation</label><input value="' + escAttr(vol.org || '') + '" oninput="updateVol(' + vol.id + ',\'org\',this.value)"></div>';
+          h += '      <div class="fld"><label>Tätigkeit / Rolle</label><input value="' + escAttr(vol.role) + '" oninput="updateVol(' + vol.id + ',\'role\',this.value)"></div>';
+          h += '      <div class="fld"><label>Zeitraum</label><input value="' + escAttr(vol.period || '') + '" oninput="updateVol(' + vol.id + ',\'period\',this.value)"></div>';
           h += '    </div>';
           h += '    <div style="display:flex; justify-content:flex-end; padding-top:6px; border-top:1px solid var(--ui-color-border-subtle);">';
           h += '      <button class="delbtn" onclick="removeVolunteer(' + vol.id + ')">✕ Ehrenamt löschen</button>';
@@ -2313,8 +2344,8 @@ function renderEditor() {
     h += '      <div class="fld">';
     h += '        <label>Akzentfarbe</label>';
     h += '        <div class="color-row" style="margin-top:4px;">';
-    h += '          <input type="color" class="color-picker" value="' + activeAccent + '" oninput="updateAccentColor(this.value)">';
-    h += '          <div class="color-info">' + activeAccent;
+    h += '          <input type="color" class="color-picker" value="' + escAttr(activeAccent) + '" oninput="updateAccentColor(this.value)">';
+    h += '          <div class="color-info">' + esc(activeAccent);
     if (customStyle.accentColor) h += '<small>Benutzerdefiniert</small>'; else h += '<small>Layout-Standard</small>';
     h += '          </div>';
     if (customStyle.accentColor) h += '<button class="reset-btn" onclick="resetAccentColor()">Standard wiederherstellen</button>';
@@ -2332,40 +2363,21 @@ function renderEditor() {
     h += '      <div class="fld">';
     h += '        <label>Schriftart</label>';
     h += '        <select class="font-select" onchange="updateFontFamily(this.value)">';
-    var fonts = [
-      { val: '', label: 'Layout-Standard' },
-      { val: "'Roboto', sans-serif", label: 'Roboto' },
-      { val: "'Segoe UI', 'Helvetica Neue', sans-serif", label: 'Segoe UI' },
-      { val: "'Calibri', 'Helvetica', sans-serif", label: 'Calibri' },
-      { val: "'Arial', sans-serif", label: 'Arial' },
-      { val: "'Georgia', 'Palatino', serif", label: 'Georgia (Serif)' },
-      { val: "'Garamond', 'Times New Roman', serif", label: 'Garamond (Serif)' },
-      { val: "'Trebuchet MS', 'Gill Sans', sans-serif", label: 'Trebuchet MS' },
-      { val: "'Verdana', 'Geneva', sans-serif", label: 'Verdana' },
-      { val: "'Tahoma', sans-serif", label: 'Tahoma' },
-      { val: "'Century Gothic', 'CenturyGothic', sans-serif", label: 'Century Gothic' }
-    ];
+    var fonts = FONT_CHOICES;
     for (var fi = 0; fi < fonts.length; fi++) {
       var sel = customStyle.fontFamily === fonts[fi].val ? ' selected' : '';
-      h += '<option value="' + esc(fonts[fi].val) + '"' + sel + ' style="font-family:' + fonts[fi].val + '">' + esc(fonts[fi].label) + '</option>';
+      h += '<option value="' + escAttr(fonts[fi].val) + '"' + sel + ' style="font-family:' + fonts[fi].val + '">' + esc(fonts[fi].label) + '</option>';
     }
     h += '        </select>';
     h += '      </div>';
 
-    var sizes = [
-      { val: '', label: 'Std', desc: 'Layout-Standard' },
-      { val: '8.5px', label: 'XS', desc: 'Sehr klein' },
-      { val: '9px', label: 'S', desc: 'Klein' },
-      { val: '9.5px', label: 'M', desc: 'Mittel' },
-      { val: '10px', label: 'L', desc: 'Groß' },
-      { val: '10.5px', label: 'XL', desc: 'Sehr groß' }
-    ];
+    var sizes = FONT_SIZE_CHOICES;
     h += '      <div class="fld">';
     h += '        <label>Schriftgröße</label>';
     h += '        <div class="size-row" style="margin-top:4px;">';
     for (var si = 0; si < sizes.length; si++) {
       var isActive = customStyle.fontSize === sizes[si].val;
-      h += '<button class="size-btn' + (isActive ? ' on' : '') + '" onclick="updateFontSize(\'' + sizes[si].val + '\')" title="' + esc(sizes[si].desc) + '">';
+      h += '<button class="size-btn' + (isActive ? ' on' : '') + '" onclick="updateFontSize(\'' + sizes[si].val + '\')" title="' + escAttr(sizes[si].desc) + '">';
       h += esc(sizes[si].label) + '</button>';
     }
     h += '        </div>';
@@ -2434,8 +2446,8 @@ function loadFromLocalStorage() {
         cvData = normalizeCVData(parsed.cvData);
         currentLayout = getLayouts()[parsed.currentLayout] ? parsed.currentLayout : 'klassisch';
         grouping = parsed.grouping === 'company' ? 'company' : 'position';
-        customStyle = parsed.customStyle && typeof parsed.customStyle === 'object' ? parsed.customStyle : { accentColor: '', fontFamily: '', fontSize: '', outputLang: 'de' };
-        outputLang = parsed.outputLang || (customStyle && customStyle.outputLang) || 'de';
+        customStyle = normalizeCustomStyle(parsed.customStyle);
+        outputLang = parsed.outputLang === 'en' || parsed.outputLang === 'de' ? parsed.outputLang : customStyle.outputLang;
         customStyle.outputLang = outputLang;
       }
     }
@@ -2478,8 +2490,8 @@ function applyHistoryState(stateStr) {
       cvData = normalizeCVData(parsed.cvData);
       currentLayout = getLayouts()[parsed.currentLayout] ? parsed.currentLayout : 'klassisch';
       grouping = parsed.grouping === 'company' ? 'company' : 'position';
-      customStyle = parsed.customStyle || { accentColor: '', fontFamily: '', fontSize: '', outputLang: 'de' };
-      outputLang = parsed.outputLang || (customStyle && customStyle.outputLang) || 'de';
+      customStyle = normalizeCustomStyle(parsed.customStyle);
+      outputLang = parsed.outputLang === 'en' || parsed.outputLang === 'de' ? parsed.outputLang : customStyle.outputLang;
       customStyle.outputLang = outputLang;
 
       renderAll();
