@@ -147,6 +147,8 @@
       .cv-sub-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 1.5px; }
       .cv-sub-role { font-weight: 600; font-size: 10px; color: #0f766e; font-style: italic; }
       .cv-sub-period { font-size: 8.5px; color: #888; }
+      /* Beschäftigungsdauer im Firmenkopf: läuft in den freien linken Rand, der Kopf wird nicht höher */
+      .cv-cg-left .cv-duration { height: 0; margin-top: 0; overflow: visible; }
       .cv-sub-ul { margin: 2px 0 0; padding-left: 14px; }
       .cv-sub-ul li { margin-bottom: 1px; color: #444; }
       .cv-sub + .cv-sub { border-top: 1px solid #e0e0e0; padding-top: 4px; }

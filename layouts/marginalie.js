@@ -122,6 +122,18 @@
       .cv-entry-left, .cv-edu-left { grid-column: 2; grid-row: 1; align-self: start; }
       .cv-cg-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
       .cv-cg-left { order: 2; }
+      /* Datum samt Beschäftigungsdauer über Titel- und Rollenzeile, rechtsbündig */
+      .cv-entry-left { grid-row: 1 / span 2; text-align: right; }
+      .cv-entry-main + .cv-entry-sub { grid-column: 1; grid-row: 2; }
+      .cv-cg-left { text-align: right; }
+      /* Firmenkopf: Dauer neben dem Zeitraum, damit der Kopf nicht höher wird */
+      .cv-cg-left .cv-duration {
+        display: inline;
+        margin: 0 0 0 5px;
+        padding-left: 5px;
+        border-left: 0.75px solid color-mix(in srgb, currentColor 40%, transparent);
+        line-height: inherit;
+      }
       .cv-entry-left, .cv-edu-left, .cv-cg-left {
         font-size: 8.4px;
         line-height: 14px;
