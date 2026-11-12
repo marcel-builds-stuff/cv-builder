@@ -231,7 +231,7 @@ var cvData = normalizeCVData(JSON.parse(JSON.stringify(DEFAULT_CV_DATA)));
 var currentLayout = 'klassisch';
 var grouping = 'position';
 var outputLang = 'de';
-var customStyle = { accentColor: '', fontFamily: '', fontSize: '', outputLang: 'de' }; // empty = use layout default
+var customStyle = { accentColor: '', fontFamily: '', fontSize: '', outputLang: 'de', durationDisplay: 'both' }; // empty = use layout default
 var openSections = { photos: true, style: false, personal: false, experience: false, education: false, skills: false, certificates: false, projects: false, volunteer: false };
 var editingExp = null, editingEdu = null, editingCert = null, editingProj = null, editingVol = null;
 
@@ -297,6 +297,9 @@ var FONT_SIZE_CHOICES = [
   { val: '10.5px', label: 'XL', desc: 'Sehr groß' }
 ];
 
+// Where the employment duration is shown; see showDurationAt().
+var DURATION_MODES = ['both', 'group', 'position', 'none'];
+
 function normalizeCustomStyle(cs) {
   cs = cs && typeof cs === 'object' ? cs : {};
   var inList = function (list, v) { return list.some(function (item) { return item.val === v; }); };
@@ -304,7 +307,8 @@ function normalizeCustomStyle(cs) {
     accentColor: typeof cs.accentColor === 'string' && /^#[0-9a-f]{6}$/i.test(cs.accentColor) ? cs.accentColor : '',
     fontFamily: inList(FONT_CHOICES, cs.fontFamily) ? cs.fontFamily : '',
     fontSize: inList(FONT_SIZE_CHOICES, cs.fontSize) ? cs.fontSize : '',
-    outputLang: cs.outputLang === 'en' ? 'en' : 'de'
+    outputLang: cs.outputLang === 'en' ? 'en' : 'de',
+    durationDisplay: DURATION_MODES.indexOf(cs.durationDisplay) >= 0 ? cs.durationDisplay : 'both'
   };
 }
 
@@ -485,6 +489,10 @@ var I18N = {
     of: 'von',
     since: 'seit ',
     present: 'heute',
+    duration_year: 'Jahr',
+    duration_years: 'Jahre',
+    duration_month: 'Monat',
+    duration_months: 'Monate',
     signature_alt: 'Unterschrift'
   },
   en: {
@@ -513,6 +521,10 @@ var I18N = {
     of: 'of',
     since: 'since ',
     present: 'present',
+    duration_year: 'year',
+    duration_years: 'years',
+    duration_month: 'month',
+    duration_months: 'months',
     signature_alt: 'Signature'
   }
 };
@@ -695,6 +707,113 @@ function companyPeriod(positions, lang) {
   return start + ' - ' + end;
 }
 
+// ═══ Beschäftigungsdauer ═══
+// Zeiträume liegen als Freitext in "period" vor. Erkannt werden nur eindeutige
+// Monatsangaben (MM/JJJJ, MM.JJJJ, Monatsname JJJJ) sowie "seit …"/"since …" und
+// "… – heute"/"… – present". Alles andere ergibt null, damit nie eine geschätzte
+// Dauer erscheint. Der angezeigte Zeitraum (formatPeriod, companyPeriod) bleibt
+// davon unberührt.
+// Start- und Endmonat zählen mit (wie bei LinkedIn): 01/2020 – 12/2020 ergibt
+// 12 Monate, und "bis 12/2022, ab 01/2023" ergibt keine Lücke.
+var DURATION_INCLUDES_END_MONTH = true;
+var MONTH_NAME_INDEX = {
+  jan: 1, januar: 1, january: 1, feb: 2, februar: 2, february: 2,
+  'mär': 3, 'märz': 3, maer: 3, maerz: 3, mrz: 3, mar: 3, march: 3,
+  apr: 4, april: 4, mai: 5, may: 5, jun: 6, juni: 6, june: 6, jul: 7, juli: 7, july: 7,
+  aug: 8, august: 8, sep: 9, sept: 9, september: 9, okt: 10, oktober: 10, oct: 10, october: 10,
+  nov: 11, november: 11, dez: 12, dezember: 12, dec: 12, december: 12
+};
+
+// "03/2021", "3.2021", "März 2021", "Mar. 2021" -> year * 12 + month - 1, sonst null.
+function monthIndexFromText(text) {
+  var s = String(text || '').trim().toLowerCase();
+  var m = /^(\d{1,2})\s*[\/.]\s*(\d{4})$/.exec(s);
+  if (m) {
+    var month = parseInt(m[1], 10);
+    return month >= 1 && month <= 12 ? parseInt(m[2], 10) * 12 + month - 1 : null;
+  }
+  m = /^([a-zäöü]+)\.?\s+(\d{4})$/.exec(s);
+  if (m && MONTH_NAME_INDEX[m[1]]) return parseInt(m[2], 10) * 12 + MONTH_NAME_INDEX[m[1]] - 1;
+  return null;
+}
+
+// Liefert { start, end } als Monatsindex oder null. Laufende Zeiträume enden im
+// aktuellen Monat; "now" ist nur für Tests überschreibbar.
+function parsePeriodRange(period, now) {
+  var s = String(period || '').trim().replace(/\s+/g, ' ');
+  if (!s) return null;
+  var d = now || new Date();
+  var current = d.getFullYear() * 12 + d.getMonth();
+  var ongoing = /^(?:(?:bis|to|until)\s+)?(?:heute|present|today|jetzt|aktuell|now|current|laufend|ongoing)$/i;
+  var start, end;
+  var since = /^(?:seit|since|ab)\s+(.+)$/i.exec(s);
+  if (since) {
+    start = monthIndexFromText(since[1]);
+    end = current;
+  } else {
+    var range = /^(.+?)(?:\s*[–—-]\s*|\s+(?:bis|to|until)\s+)(.+)$/i.exec(s);
+    if (!range) return null;
+    start = monthIndexFromText(range[1]);
+    end = ongoing.test(range[2].trim()) ? current : monthIndexFromText(range[2]);
+  }
+  if (start === null || end === null || end < start) return null;
+  return { start: start, end: end };
+}
+
+// Beschäftigte Monate über mehrere Zeiträume: Überschneidungen zählen einmal,
+// Lücken gar nicht. Ist ein Zeitraum unklar, gibt es keine Summe (null).
+function totalMonths(periods, now) {
+  var ranges = [];
+  for (var i = 0; i < periods.length; i++) {
+    var r = parsePeriodRange(periods[i], now);
+    if (!r) return null;
+    ranges.push({ start: r.start, end: r.end + (DURATION_INCLUDES_END_MONTH ? 1 : 0) }); // halb offen
+  }
+  if (!ranges.length) return null;
+  ranges.sort(function (a, b) { return a.start - b.start; });
+  var total = 0;
+  var cur = { start: ranges[0].start, end: ranges[0].end };
+  for (var j = 1; j < ranges.length; j++) {
+    if (ranges[j].start <= cur.end) cur.end = Math.max(cur.end, ranges[j].end);
+    else { total += cur.end - cur.start; cur = { start: ranges[j].start, end: ranges[j].end }; }
+  }
+  total += cur.end - cur.start;
+  return total > 0 ? total : null;
+}
+
+function periodMonths(period, now) { return totalMonths([period], now); }
+
+// 25 -> "2 Jahre, 1 Monat" / "2 years, 1 month"
+function formatDuration(months, lang) {
+  if (!months || months < 1) return '';
+  var l = lang || outputLang || 'de';
+  var years = Math.floor(months / 12);
+  var rest = months % 12;
+  var parts = [];
+  if (years) parts.push(years + ' ' + t(years === 1 ? 'duration_year' : 'duration_years', l));
+  if (rest) parts.push(rest + ' ' + t(rest === 1 ? 'duration_month' : 'duration_months', l));
+  return parts.join(', ');
+}
+
+function durationDisplayMode() {
+  return DURATION_MODES.indexOf(customStyle.durationDisplay) >= 0 ? customStyle.durationDisplay : 'both';
+}
+
+// level: 'group' (Firmenkopf) oder 'position'. Ohne Gruppierung nach Firmen gibt
+// es keinen Firmenkopf; dann steht die Dauer an den Positionen.
+function showDurationAt(level, grp) {
+  var mode = durationDisplayMode();
+  if (mode === 'none') return false;
+  if (grp === 'position') return level === 'position';
+  return mode === 'both' || mode === level;
+}
+
+// Echter Text statt CSS-Pseudoelement, damit die Dauer im PDF-Text steht.
+function durationHtml(months, lang) {
+  var text = formatDuration(months, lang);
+  return text ? '<span class="cv-duration">' + esc(text) + '</span>' : '';
+}
+
 function todayStr(lang) {
   var l = lang || outputLang || 'de';
   var d = new Date();
@@ -711,7 +830,7 @@ function renderExperience(data, grp, lang) {
   if (grp === 'position') {
     for (var i = 0; i < data.experience.length; i++) {
       var exp = data.experience[i];
-      out += '<article class="cv-entry"><div class="cv-entry-left">' + esc(formatPeriod(exp.period, l)) + '</div><div class="cv-entry-right"><h3 class="cv-entry-main">' + esc(companyDisplay(exp)) + '</h3><div class="cv-entry-sub">' + esc(exp.role) + '</div><ul class="cv-entry-ul">';
+      out += '<article class="cv-entry"><div class="cv-entry-left">' + esc(formatPeriod(exp.period, l)) + (showDurationAt('position', grp) ? durationHtml(periodMonths(exp.period), l) : '') + '</div><div class="cv-entry-right"><h3 class="cv-entry-main">' + esc(companyDisplay(exp)) + '</h3><div class="cv-entry-sub">' + esc(exp.role) + '</div><ul class="cv-entry-ul">';
       for (var t = 0; t < exp.tasks.length; t++) out += '<li>' + esc(exp.tasks[t]) + '</li>';
       out += '</ul></div></article>';
     }
@@ -719,13 +838,14 @@ function renderExperience(data, grp, lang) {
     var groups = groupByCompany(data.experience);
     for (var g = 0; g < groups.length; g++) {
       var grpD = groups[g], per = companyPeriod(grpD.positions, l);
-      out += '<section class="cv-cg"><div class="cv-cg-head"><div class="cv-cg-left">' + esc(per) + '</div><div class="cv-cg-right"><h3 class="cv-cg-name">' + esc(grpD.company) + '</h3></div></div>';
+      var groupDuration = showDurationAt('group', grp) ? durationHtml(totalMonths(grpD.positions.map(function (x) { return x.period; })), l) : '';
+      out += '<section class="cv-cg"><div class="cv-cg-head"><div class="cv-cg-left">' + esc(per) + groupDuration + '</div><div class="cv-cg-right"><h3 class="cv-cg-name">' + esc(grpD.company) + '</h3></div></div>';
       out += '<div class="cv-cg-positions">';
       for (var p = 0; p < grpD.positions.length; p++) {
         var pos = grpD.positions[p];
         var rl = pos.role;
         if (pos.entity && pos.entity.trim()) rl = pos.entity + ' – ' + pos.role;
-        out += '<article class="cv-sub"><div class="cv-sub-head"><h4 class="cv-sub-role">' + esc(rl) + '</h4><div class="cv-sub-period">' + esc(formatPeriod(pos.period, l)) + '</div></div><ul class="cv-sub-ul">';
+        out += '<article class="cv-sub"><div class="cv-sub-head"><h4 class="cv-sub-role">' + esc(rl) + '</h4><div class="cv-sub-period">' + esc(formatPeriod(pos.period, l)) + (showDurationAt('position', grp) ? durationHtml(periodMonths(pos.period), l) : '') + '</div></div><ul class="cv-sub-ul">';
         for (var t2 = 0; t2 < pos.tasks.length; t2++) out += '<li>' + esc(pos.tasks[t2]) + '</li>';
         out += '</ul></article>';
       }
@@ -1164,7 +1284,12 @@ var helpers = {
   get lang() { return outputLang; },
   renderExperience: renderExperience,
   renderSignature: renderSignature,
-  renderOptionalSections: renderOptionalSections
+  renderOptionalSections: renderOptionalSections,
+  formatDuration: formatDuration,
+  periodMonths: periodMonths,
+  totalMonths: totalMonths,
+  durationHtml: durationHtml,
+  showDurationAt: showDurationAt
 };
 
 // ═══════════════════════════════════════
@@ -1295,6 +1420,7 @@ function updateSigLoc(v) { cvData.signatureLocation=v; renderPreview(); }
 function updateAccentColor(v) { customStyle.accentColor=v; applyLayoutCSS(); renderPreviewImmediate(); }
 function resetAccentColor() { customStyle.accentColor=''; applyLayoutCSS(); renderPreviewImmediate(); renderEditor(); }
 function updateFontFamily(v) { customStyle.fontFamily=v; applyLayoutCSS(); renderPreviewImmediate(); }
+function updateDurationDisplay(v) { customStyle.durationDisplay = DURATION_MODES.indexOf(v) >= 0 ? v : 'both'; renderPreviewImmediate(); }
 function updateFontSize(v) { customStyle.fontSize=v; applyLayoutCSS(); renderPreviewImmediate(); }
 function updateExp(id,f,v) { var e=cvData.experience.find(function(x){return x.id===id;}); if(e){e[f]=v; renderPreview();} }
 function updateExpTasks(id,v) { var e=cvData.experience.find(function(x){return x.id===id;}); if(e){e.tasks=v.split('\n').filter(function(t){return t.trim();}); renderPreview();} }
@@ -1449,7 +1575,7 @@ function importJSON(ev) {
           outputLang = customStyle.outputLang;
           delete d.customStyle;
         } else {
-          customStyle = { accentColor: '', fontFamily: '', fontSize: '', outputLang: 'de' };
+          customStyle = { accentColor: '', fontFamily: '', fontSize: '', outputLang: 'de', durationDisplay: 'both' };
           outputLang = 'de';
         }
 
@@ -1500,6 +1626,13 @@ var renderTimeout = null;
 function renderPreview() {
   if (renderTimeout) clearTimeout(renderTimeout);
   renderTimeout = setTimeout(renderPreviewImmediate, 150);
+}
+
+// Schriften laden erst nach, wenn ein Layout sie zum ersten Mal braucht. Bis dahin misst
+// der Seitenumbruch mit der Ersatzschrift; nach dem Wechsel auf die echte Schrift passen
+// die Umbrüche nicht mehr und es entstehen Lücken. Deshalb nach jedem Nachladen neu umbrechen.
+if (document.fonts && document.fonts.addEventListener) {
+  document.fonts.addEventListener('loadingdone', renderPreview);
 }
 
 function renderPreviewImmediate() {
@@ -2385,6 +2518,28 @@ function renderEditor() {
     h += '    </div>';
     h += '  </div>';
     h += '</div>';
+
+    var durationOptions = [
+      { val: 'both', label: 'Bei Firmengruppe und Position' },
+      { val: 'group', label: 'Nur bei Firmengruppe' },
+      { val: 'position', label: 'Nur bei Position' },
+      { val: 'none', label: 'Nicht anzeigen' }
+    ];
+    var activeDuration = durationDisplayMode();
+    h += '<div class="wide-card">';
+    h += '  <div class="wide-card-h" style="cursor:default;"><div class="wide-card-t">Beschäftigungsdauer anzeigen</div></div>';
+    h += '  <div class="wide-card-b">';
+    h += '    <div class="fld">';
+    h += '      <div class="radio-group" role="radiogroup" aria-label="Beschäftigungsdauer anzeigen">';
+    for (var di = 0; di < durationOptions.length; di++) {
+      var dOpt = durationOptions[di];
+      h += '<label class="radio-option"><input type="radio" name="duration-display" value="' + escAttr(dOpt.val) + '"' + (activeDuration === dOpt.val ? ' checked' : '') + ' onchange="updateDurationDisplay(this.value)">' + esc(dOpt.label) + '</label>';
+    }
+    h += '      </div>';
+    h += '      <div class="fld-hint">Wird aus den Zeiträumen berechnet; Start- und Endmonat zählen mit. Bei „Nach Positionen“ steht die Dauer an den Positionen. Unklare Angaben, etwa reine Jahreszahlen, erhalten keine Dauer.</div>';
+    h += '    </div>';
+    h += '  </div>';
+    h += '</div>';
   }
   h += closeFokusSec('style');
 
@@ -2528,7 +2683,7 @@ function resetToDefaultExample() {
     currentLayout = 'klassisch';
     grouping = 'position';
     outputLang = 'de';
-    customStyle = { accentColor: '', fontFamily: '', fontSize: '', outputLang: 'de' };
+    customStyle = { accentColor: '', fontFamily: '', fontSize: '', outputLang: 'de', durationDisplay: 'both' };
     
     saveToLocalStorage();
     renderAll();

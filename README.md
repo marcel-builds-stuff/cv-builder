@@ -15,6 +15,8 @@ können. Entwickelt mit KI-Unterstützung.
 - Bewerbungsfoto und eingescannte Unterschrift mit Ort und Datum
 - Berufserfahrung nach Positionen oder nach Firmen gruppiert, Reihenfolge per
   Drag & Drop
+- Beschäftigungsdauer automatisch aus den Zeiträumen berechnet, wahlweise bei
+  Firma und Position, nur bei einem von beiden oder gar nicht (siehe unten)
 - Ausbildung, Kenntnisse und Sprachen, Zertifikate, Projekte, Ehrenamt
 - Akzentfarbe, Schriftart und Schriftgröße anpassbar; Ausgabe auf Deutsch oder
   Englisch
@@ -60,6 +62,36 @@ liegen. Fehlen sie, bleibt die Vorschau leer oder die Oberfläche ungestaltet.
 | Editorial | Ruhig und typografisch, Schrift Plus Jakarta Sans |
 | Medizinisch | Klar, mit farbigem Kopfbereich; für Praxen, Kliniken und Gesundheitswesen |
 | Marginalie | Abschnittstitel in einer Randspalte, Serifenschrift, ein Farbakzent |
+
+## Beschäftigungsdauer
+
+Zu jedem Zeitraum der Berufserfahrung kann die Dauer stehen, zum Beispiel
+„2 Jahre, 4 Monate“: unter dem Zeitraum, wo daneben Platz frei ist, sonst in
+derselben Zeile. So rutscht durch die Dauer nichts nach unten. Der Zeitraum
+selbst bleibt unverändert sichtbar. Einstellbar unter „Design &
+Dokumentensprache“:
+
+- bei Firmengruppe und Position (Standard)
+- nur bei der Firmengruppe
+- nur bei der Position
+- nicht anzeigen
+
+Bei der Gruppierung nach Positionen gibt es keinen Firmenkopf; dann steht die
+Dauer an den Positionen.
+
+So wird gerechnet:
+
+- Erkannt werden Monatsangaben wie `01/2020 - 01/2025`, `01.2020 – 06.2020`,
+  `März 2021 – Mai 2023`, `seit 06/2026`, `since 06/2026`, `06/2020 - heute`
+  oder `06/2020 - present`.
+- Start- und Endmonat zählen mit: `01/2020 - 12/2020` ergibt 1 Jahr.
+- Laufende Stellen zählen bis zum aktuellen Monat. Die angezeigte Dauer ändert
+  sich also mit der Zeit.
+- Für die Gesamtdauer bei einer Firma zählen überlappende Zeiträume einmal;
+  Lücken zwischen Positionen zählen nicht mit.
+- Bei unklaren Angaben, etwa reinen Jahreszahlen (`2016 - 2019`) oder einem
+  einzelnen Monat, erscheint keine Dauer. Lässt sich eine Position einer Firma
+  nicht berechnen, entfällt auch die Gesamtdauer dieser Firma.
 
 ## ATS-Check
 
@@ -131,6 +163,9 @@ aufgebaut sind. Einige Regeln, damit Seitenumbruch und PDF funktionieren:
   verloren; ein leicht erhöhter Wortabstand (`word-spacing: 0.1em`) behebt das.
 - Schriften als `@font-face` in `styles/fonts.css` eintragen und die Dateien
   nach `fonts/` legen.
+- Für eine eigene Darstellung der Beschäftigungsdauer stehen `h.periodMonths`,
+  `h.totalMonths`, `h.formatDuration`, `h.durationHtml` und `h.showDurationAt`
+  bereit. `renderExperience` nutzt sie bereits.
 
 ## Grenzen
 

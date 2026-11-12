@@ -243,6 +243,8 @@
         font-weight: 500;
         color: #64748B;
       }
+      /* Beschäftigungsdauer im Firmenkopf: läuft in den freien linken Rand, der Kopf wird nicht höher */
+      .cv-cg-left .cv-duration { height: 0; margin-top: 0; overflow: visible; }
       .cv-sub-ul {
         margin: 2px 0 0;
         padding-left: 13px;
