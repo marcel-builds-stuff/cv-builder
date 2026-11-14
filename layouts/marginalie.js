@@ -16,6 +16,10 @@
     accent: "#B5562E",
 
     css: `
+      /* ── Anschreiben: Briefkopf, Name links, Absender rechts ── */
+      .cv-root .cv-mg-lh { padding: 16mm 20mm 0 25mm; }
+      .cv-root .cv-mg-lh .cv-lh-sender { font-size: 8.8px; color: #5E5A55; }
+
       .cv-root {
         font-family: 'Source Sans 3', 'Segoe UI', Arial, sans-serif;
         font-size: 9.6px;
@@ -222,6 +226,16 @@
         right: 17mm;
       }
     `,
+
+    // Briefkopf des Anschreibens: Name und Titel links, Absender rechts
+    renderLetterHead: function (data, h) {
+      var p = data.personal || {};
+      var out = '<header class="cv-lh cv-mg-lh"><div class="cv-lh-main">';
+      out += '<h1 class="cv-mg-name">' + h.esc(h.displayName(p.name)) + '</h1>';
+      if (p.title && p.title.trim()) out += '<div class="cv-mg-title">' + h.esc(p.title.trim()) + '</div>';
+      out += '<div class="cv-mg-rule" aria-hidden="true"></div>';
+      return out + '</div>' + h.letterSender(data, false) + '</header>';
+    },
 
     render: function (data, grouping, h) {
       var t = function (key, fallback) { return h.t ? h.t(key) : fallback; };

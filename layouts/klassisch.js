@@ -7,6 +7,16 @@
     accent: "#0077b6",
 
     css: `
+      /* ── Anschreiben: Briefkopf, Name links, Absender rechts ── */
+      .cv-root .cv-k-lh {
+        margin: 0 20mm 0 25mm;
+        padding: 16px 0 3mm;
+        border-bottom: 2px solid var(--letter-accent, #0077b6);
+      }
+      .cv-root .cv-k-lh .cv-subtitle { margin-bottom: 0; }
+      .cv-root .cv-k-lh .cv-lh-sender { color: #444; }
+      .cv-root .cv-k-lh .cv-lh-ico { color: var(--letter-accent, #0077b6); }
+
       .cv-root {
         font-family: 'Segoe UI', 'Calibri', 'Helvetica Neue', sans-serif;
         font-size: 10px;
@@ -212,6 +222,15 @@
       .cv-sig-location { font-size: 9.5px; color: #444; margin-bottom: 4px; }
       .cv-sig-img { max-height: 40px; max-width: 160px; }
     `,
+
+    // Briefkopf des Anschreibens: Name und Titel links, Absender rechts
+    renderLetterHead: function (data, h) {
+      var p = data.personal || {};
+      var out = '<div class="cv-deco-top" aria-hidden="true"></div><div class="cv-deco-geo" aria-hidden="true"></div>';
+      out += '<header class="cv-lh cv-k-lh"><div class="cv-lh-main"><h1 class="cv-title">' + h.esc(h.displayName(p.name)) + '</h1>';
+      if (p.title && p.title.trim()) out += '<div class="cv-subtitle">' + h.esc(p.title.trim()) + '</div>';
+      return out + '</div>' + h.letterSender(data, true) + '</header>';
+    },
 
     render: function (data, grouping, h) {
       let out = "";
