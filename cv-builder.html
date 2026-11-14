@@ -27,6 +27,7 @@
       </button>
     </div>
     <span id="save-status" class="app-topbar__status"></span>
+    <button type="button" id="backup-reminder" class="backup-reminder" style="display:none" onclick="exportJSON()" title="Jetzt als JSON-Datei sichern"></button>
   </div>
 
       <div class="action-row">
@@ -78,10 +79,21 @@
   <section id="pv-area" aria-label="Vorschau">
     <div class="pv-toolbar" role="toolbar" aria-label="Darstellung des Lebenslaufs">
       <div class="pv-toolbar__group">
-        <span class="pv-toolbar__label" id="lbl-layout">Layout</span>
-        <div id="layout-btns" class="seg-control" role="group" aria-labelledby="lbl-layout"></div>
+        <span class="pv-toolbar__label" id="lbl-doc">Dokument</span>
+        <div class="seg-control" role="group" aria-labelledby="lbl-doc">
+          <button class="seg-btn on" data-doc="cv" onclick="setDocument('cv')">Lebenslauf</button>
+          <button class="seg-btn" data-doc="letter" onclick="setDocument('letter')">Anschreiben</button>
+          <button class="seg-btn" data-doc="both" onclick="setDocument('both')">Beides</button>
+        </div>
       </div>
       <div class="pv-toolbar__group">
+        <span class="pv-toolbar__label" id="lbl-layout">Layout</span>
+        <div class="lay-select" id="lay-select">
+          <button type="button" class="lay-select__btn" id="lay-select-btn" aria-haspopup="listbox" aria-expanded="false" aria-controls="lay-select-menu" aria-labelledby="lbl-layout lay-select-btn" onclick="toggleLayoutMenu()" onkeydown="layoutButtonKey(event)"></button>
+          <div class="lay-select__menu" id="lay-select-menu" role="listbox" aria-labelledby="lbl-layout" hidden onkeydown="layoutMenuKey(event)"></div>
+        </div>
+      </div>
+      <div class="pv-toolbar__group" id="grp-group">
         <span class="pv-toolbar__label" id="lbl-grp">Gruppierung</span>
         <div class="seg-control" role="group" aria-labelledby="lbl-grp">
           <button class="seg-btn on" data-grp="position" onclick="setGrouping('position')">Nach Positionen</button>
@@ -131,6 +143,16 @@
         Recruiter-Score &amp; Zahlen
         <span class="ats-tab-pill" id="content-score-num">2/4</span>
       </button>
+      <button class="ats-tab" id="tab-btn-posting" onclick="switchAtsTab('posting')">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg>
+        Stellenanzeige
+        <span class="ats-tab-pill" id="posting-score-num">–</span>
+      </button>
+      <button class="ats-tab" id="tab-btn-letter" onclick="switchAtsTab('letter')">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/></svg>
+        Anschreiben
+        <span class="ats-tab-pill" id="letter-score-num">–</span>
+      </button>
       <button class="ats-tab" id="tab-btn-stream" onclick="switchAtsTab('stream')">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
         Extrahierter Text-Stream
@@ -155,6 +177,22 @@
           <div class="ats-section-label">Qualitäts- &amp; Scoring-Kriterien (Wirkung, messbare Erfolge, Lesbarkeit)</div>
           <div id="ats-content-checklist" class="ats-checks"></div>
         </div>
+      </div>
+
+      <!-- TAB: STELLENANZEIGE -->
+      <div id="ats-tab-panel-posting" class="ats-tab-panel" style="display:none;">
+        <div class="fld">
+          <label for="posting-text">Text der Stellenanzeige</label>
+          <textarea id="posting-text" class="posting-input" oninput="updatePostingText(this.value)" placeholder="Stellenanzeige hier einfügen …"></textarea>
+          <div class="fld-hint">Der Text bleibt im Browser und wird mit „Speichern“ in der JSON-Datei gesichert. Der Abgleich läuft ohne KI und ohne Netzwerk: Er sucht Fachbegriffe und Substantive der Anzeige im Text des Lebenslaufs.</div>
+        </div>
+        <div id="posting-result" class="posting-result"></div>
+      </div>
+
+      <!-- TAB: ANSCHREIBEN -->
+      <div id="ats-tab-panel-letter" class="ats-tab-panel" style="display:none;">
+        <div id="ats-letter-badge" class="ats-badge warning"></div>
+        <div id="letter-check-result" class="letter-check"></div>
       </div>
 
       <!-- TAB 3: EXTRACTED TEXT STREAM -->
@@ -192,10 +230,16 @@
 // ═══════════════════════════════════════
 // PLACEHOLDER DATA
 // ═══════════════════════════════════════
+// Felder des Anschreibens; vor den Beispieldaten, weil normalizeCVData sie beim Laden braucht.
+var LETTER_FIELDS = ['recipient', 'subject', 'salutation', 'body', 'closing', 'enclosures'];
+// Abschnitte, deren Einträge sich im Lebenslauf ausblenden lassen (Eintrag.hidden = true)
+var HIDEABLE_SECTIONS = ['experience', 'education', 'certificates', 'projects', 'volunteer'];
+
 var DEFAULT_CV_DATA = {
   photo: '',
   signature: '',
   signatureLocation: 'Berlin',
+  signatureDate: '',
   personal: {
     name: 'Mustermann, Max',
     title: '',
@@ -222,7 +266,16 @@ var DEFAULT_CV_DATA = {
   },
   certificates: [],
   projects: [],
-  volunteer: []
+  volunteer: [],
+  letter: {
+    recipient: 'Musterfirma GmbH\nPersonalabteilung\nBeispielweg 1\n10117 Berlin',
+    subject: 'Bewerbung als Senior Consultant ERP',
+    salutation: '',
+    body: 'Die Musterfirma führt ihr neues ERP-System schrittweise an allen Standorten ein. Genau solche Vorhaben begleite ich seit über acht Jahren. Als Senior Consultant bei der Muster AG verantworte ich ERP-Einführungen von der Anforderungsanalyse bis zum Produktivstart.\n\nZuletzt habe ich die Migration von drei Gesellschaften auf ein gemeinsames System geleitet. Das Projekt endete im geplanten Zeitrahmen, und die Monatsabschlüsse laufen seitdem zwei Tage schneller. Für diesen Rollout habe ich ein Testkonzept entwickelt, das heute in allen Projekten der Muster AG verwendet wird. In Workshops übersetze ich die Anforderungen der Fachbereiche in klare Prozesse. Die Anwender binde ich früh ein, und Entscheidungen werden nachvollziehbar dokumentiert. Neben der Projektleitung schule ich Key-User und baue Supportstrukturen auf, damit das System nach dem Start im Alltag trägt.\n\nMit SAP S/4HANA und Microsoft Dynamics habe ich jeweils mehrere Einführungen begleitet. In beiden Systemen kenne ich Einkauf, Lager und Finanzbuchhaltung aus der Praxis. Auch die Abstimmung mit externen Dienstleistern gehört seit Jahren zu meinem Alltag. Besonders reizt mich, bei der Musterfirma nicht nur einzelne Projekte zu begleiten, sondern die Systemlandschaft langfristig mitzugestalten. Meine Kündigungsfrist beträgt drei Monate zum Quartalsende.\n\nGern zeige ich Ihnen in einem persönlichen Gespräch, wie ich Ihr Team bei der Einführung unterstützen kann. Ich freue mich auf Ihre Rückmeldung.',
+    closing: '',
+    enclosures: 'Lebenslauf\nZeugnisse'
+  },
+  posting: { text: '', ignored: [] }
 };
 
 var nextId = 100;
@@ -335,6 +388,7 @@ function normalizeCVData(data) {
   d.photo = sanitizeImage(asText(d.photo));
   d.signature = sanitizeImage(asText(d.signature));
   d.signatureLocation = asText(d.signatureLocation);
+  d.signatureDate = parseIsoDate(d.signatureDate) ? asText(d.signatureDate) : '';
 
   d.experience = Array.isArray(d.experience) ? d.experience : [];
   for (var e = 0; e < d.experience.length; e++) {
@@ -383,6 +437,18 @@ function normalizeCVData(data) {
   for (var vi = 0; vi < d.volunteer.length; vi++) {
     if (!d.volunteer[vi] || typeof d.volunteer[vi] !== 'object' || Array.isArray(d.volunteer[vi])) d.volunteer[vi] = {};
   }
+
+  HIDEABLE_SECTIONS.forEach(function (s) { d[s].forEach(function (x) { if (x.hidden !== true) delete x.hidden; }); });
+
+  var letterIn = d.letter && typeof d.letter === 'object' && !Array.isArray(d.letter) ? d.letter : {};
+  d.letter = {};
+  LETTER_FIELDS.forEach(function (f) { d.letter[f] = asText(letterIn[f]); });
+  var postingIn = d.posting && typeof d.posting === 'object' && !Array.isArray(d.posting) ? d.posting : {};
+  d.posting = {
+    text: asText(postingIn.text),
+    ignored: (Array.isArray(postingIn.ignored) ? postingIn.ignored : []).map(asText)
+      .filter(function (k) { return k && k.length <= 120; }).slice(0, 300)
+  };
 
   ensureUniqueIds(d);
   return d;
@@ -493,7 +559,11 @@ var I18N = {
     duration_years: 'Jahre',
     duration_month: 'Monat',
     duration_months: 'Monate',
-    signature_alt: 'Unterschrift'
+    signature_alt: 'Unterschrift',
+    letter_kicker: 'ANSCHREIBEN',
+    letter_salutation: 'Sehr geehrte Damen und Herren,',
+    letter_closing: 'Mit freundlichen Grüßen',
+    letter_enclosures: 'Anlagen'
   },
   en: {
     cv_title: 'CURRICULUM VITAE',
@@ -525,7 +595,11 @@ var I18N = {
     duration_years: 'years',
     duration_month: 'month',
     duration_months: 'months',
-    signature_alt: 'Signature'
+    signature_alt: 'Signature',
+    letter_kicker: 'COVER LETTER',
+    letter_salutation: 'Dear Sir or Madam,',
+    letter_closing: 'Kind regards',
+    letter_enclosures: 'Enclosures'
   }
 };
 
@@ -783,6 +857,75 @@ function totalMonths(periods, now) {
 
 function periodMonths(period, now) { return totalMonths([period], now); }
 
+// ═══ Lückenprüfung ═══
+// Gemeldet werden Zeiten ohne Eintrag zwischen der ersten Station und heute.
+// Anders als bei der Beschäftigungsdauer zählen hier auch reine Jahreszahlen:
+// "2011 - 2014" gilt als 01/2011 bis 12/2014, damit Schul- und Studienzeiten
+// ohne Monat keine Scheinlücken erzeugen.
+var GAP_SECTIONS = ['experience', 'education', 'projects', 'volunteer'];
+var GAP_MIN_MONTHS = 4; // mehr als 3 Monate ohne Eintrag
+
+function monthBound(text, isEnd, current) {
+  var s = String(text || '').trim().replace(/^(?:bis|to|until)\s+/i, '');
+  if (/^(?:heute|present|today|jetzt|aktuell|now|current|laufend|ongoing)$/i.test(s)) return isEnd ? current : null;
+  var m = monthIndexFromText(s);
+  if (m !== null) return m;
+  var y = /^(\d{4})$/.exec(s);
+  return y ? parseInt(y[1], 10) * 12 + (isEnd ? 11 : 0) : null;
+}
+
+// Wie parsePeriodRange, nimmt aber zusätzlich Jahreszahlen und einzelne
+// Monate oder Jahre ("2019", "03/2019") an.
+function parsePeriodLoose(period, now) {
+  var strict = parsePeriodRange(period, now);
+  if (strict) return strict;
+  var s = String(period || '').trim().replace(/\s+/g, ' ');
+  if (!s) return null;
+  var d = now || new Date();
+  var current = d.getFullYear() * 12 + d.getMonth();
+  var start, end;
+  var since = /^(?:seit|since|ab)\s+(.+)$/i.exec(s);
+  var range = /^(.+?)(?:\s*[–—-]\s*|\s+(?:bis|to|until)\s+)(.+)$/i.exec(s);
+  if (since) { start = monthBound(since[1], false, current); end = current; }
+  else if (range) { start = monthBound(range[1], false, current); end = monthBound(range[2], true, current); }
+  else { start = monthBound(s, false, current); end = monthBound(s, true, current); }
+  if (start === null || end === null || end < start) return null;
+  return { start: start, end: end };
+}
+
+function formatMonthIndex(idx) {
+  return String(idx % 12 + 1).padStart(2, '0') + '/' + Math.floor(idx / 12);
+}
+
+// { gaps: [{ from, to, months }], openSince, unreadable: [...], checked }
+function findCareerGaps(data, now) {
+  var d = now || new Date();
+  var current = d.getFullYear() * 12 + d.getMonth();
+  var ranges = [], unreadable = [];
+  GAP_SECTIONS.forEach(function (sec) {
+    (data[sec] || []).forEach(function (item) {
+      var period = asText(item && item.period).trim();
+      if (!period) return;
+      var r = parsePeriodLoose(period, d);
+      if (!r) { if (unreadable.indexOf(period) < 0) unreadable.push(period); return; }
+      if (r.start > current) return; // liegt in der Zukunft
+      ranges.push({ start: r.start, end: Math.min(r.end, current) + 1 }); // halb offen
+    });
+  });
+  var result = { gaps: [], openSince: null, unreadable: unreadable, checked: ranges.length };
+  if (!ranges.length) return result;
+  ranges.sort(function (a, b) { return a.start - b.start; });
+  var cur = { start: ranges[0].start, end: ranges[0].end };
+  for (var i = 1; i < ranges.length; i++) {
+    if (ranges[i].start <= cur.end) { cur.end = Math.max(cur.end, ranges[i].end); continue; }
+    var hole = ranges[i].start - cur.end;
+    if (hole >= GAP_MIN_MONTHS) result.gaps.push({ from: cur.end, to: ranges[i].start - 1, months: hole });
+    cur = { start: ranges[i].start, end: ranges[i].end };
+  }
+  if (current + 1 - cur.end >= GAP_MIN_MONTHS) result.openSince = cur.end;
+  return result;
+}
+
 // 25 -> "2 Jahre, 1 Monat" / "2 years, 1 month"
 function formatDuration(months, lang) {
   if (!months || months < 1) return '';
@@ -814,9 +957,29 @@ function durationHtml(months, lang) {
   return text ? '<span class="cv-duration">' + esc(text) + '</span>' : '';
 }
 
-function todayStr(lang) {
+// Festes Datum für Unterschrift und Anschreiben ("JJJJ-MM-TT"); leer heißt heute
+var DOC_DATE_STALE_DAYS = 7;
+function parseIsoDate(s) {
+  var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(asText(s));
+  if (!m) return null;
+  var d = new Date(+m[1], +m[2] - 1, +m[3]);
+  return d.getFullYear() === +m[1] && d.getMonth() === +m[2] - 1 && d.getDate() === +m[3] ? d : null;
+}
+
+function docDate() { return parseIsoDate(cvData && cvData.signatureDate) || new Date(); }
+
+// Tage seit dem festen Datum (negativ: in der Zukunft); null ohne festes Datum
+function docDateAgeDays(iso, now) {
+  var d = parseIsoDate(iso);
+  if (!d) return null;
+  var n = now || new Date();
+  return Math.round((new Date(n.getFullYear(), n.getMonth(), n.getDate()) - d) / 86400000);
+}
+
+function docDateStr(lang) { return formatDocDate(docDate(), lang); }
+
+function formatDocDate(d, lang) {
   var l = lang || outputLang || 'de';
-  var d = new Date();
   if (l === 'en') {
     var months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
     return months[d.getMonth()] + ' ' + d.getDate() + ', ' + d.getFullYear();
@@ -858,7 +1021,7 @@ function renderExperience(data, grp, lang) {
 function renderSignature(data, lang) {
   if (!data.signature && !data.signatureLocation) return '';
   var l = lang || outputLang || 'de';
-  var dateStr = todayStr(l);
+  var dateStr = docDateStr(l);
   var loc = esc(data.signatureLocation || '');
   var locDate = '';
   if (l === 'en') {
@@ -870,6 +1033,107 @@ function renderSignature(data, lang) {
   var out = '<div class="cv-sig-block"><div class="cv-sig-location">' + locDate + '</div>';
   if (data.signature) out += '<img class="cv-sig-img" src="' + escAttr(data.signature) + '" alt="' + escAttr(altText) + '">';
   return out + '</div>';
+}
+
+// ═══ Anschreiben ═══
+// "Nachname, Vorname" -> "Vorname Nachname"
+function displayName(value) {
+  var raw = asText(value).trim();
+  if (raw.indexOf(',') < 0) return raw;
+  var parts = raw.split(',');
+  var family = parts.shift().trim();
+  var given = parts.join(',').trim();
+  return (given + ' ' + family).trim();
+}
+
+// Kontaktangaben für Briefköpfe. text ist unmaskiert; href nur bei Links.
+function contactItems(data) {
+  var p = data.personal || {};
+  var items = [];
+  if (p.address && p.address.trim()) items.push({ icon: 'address', text: p.address.trim().replace(/\s*\r?\n\s*/g, ', ') });
+  if (p.phone && p.phone.trim()) items.push({ icon: 'phone', text: p.phone.trim() });
+  if (p.email && p.email.trim()) items.push({ icon: 'email', text: p.email.trim(), href: 'mailto:' + p.email.trim() });
+  if (p.linkedin && p.linkedin.trim()) {
+    var lk = p.linkedin.trim();
+    items.push({ icon: 'linkedin', text: lk.replace(/^https?:\/\/(www\.)?/i, '').replace(/\/$/, ''), href: /^https?:\/\//i.test(lk) ? lk : 'https://' + lk });
+  }
+  return items;
+}
+
+function letterLinesHtml(text) {
+  return asText(text).split(/\r?\n/).map(function (s) { return s.trim(); }).filter(Boolean).map(esc).join('<br>');
+}
+
+// Anschrift als einzelne Zeilen. Eine einzeilige Anschrift wie
+// "Musterstraße 1, 12345 Musterstadt" wird vor der Postleitzahl getrennt.
+function letterAddressLines(data) {
+  var addr = asText((data.personal || {}).address).trim();
+  var parts = /\n/.test(addr) ? addr.split(/\r?\n/) : addr.split(/,\s*(?=\d{4,5}\s)/);
+  return parts.map(function (s) { return s.trim(); }).filter(Boolean);
+}
+
+// Absenderblock des Briefkopfs: Anschrift, Telefon, E-Mail, LinkedIn untereinander,
+// rechtsbündig. Symbole stehen rechts vom Text, damit sie eine gerade Kante bilden.
+function letterSender(data, withIcons) {
+  var lines = letterAddressLines(data).map(function (s, i) { return { icon: i === 0 ? 'address' : '', text: s }; });
+  contactItems(data).forEach(function (it) { if (it.icon !== 'address') lines.push(it); });
+  if (!lines.length) return '';
+  return '<div class="cv-lh-sender">' + lines.map(function (it) {
+    var icon = withIcons ? '<span class="cv-lh-ico" aria-hidden="true">' + (ICONS[it.icon] || '') + '</span>' : '';
+    return '<div class="cv-lh-line"><span>' + esc(it.text) + '</span>' + icon + '</div>';
+  }).join('') + '</div>';
+}
+
+// Rücksendeangabe über der Empfängeranschrift: Name und Anschrift in einer Zeile
+function letterReturnLine(data) {
+  var addr = letterAddressLines(data);
+  if (!addr.length) return '';
+  var name = displayName(data.personal && data.personal.name);
+  return (name ? [name] : []).concat(addr).join(' · ');
+}
+
+// Briefkopf für Layouts ohne eigenen renderLetterHead
+function genericLetterHead(data) {
+  var p = data.personal || {};
+  var out = '<header class="cv-lh cv-letter-head"><div class="cv-lh-main">';
+  out += '<h1 class="cv-letter-head-name">' + esc(displayName(p.name)) + '</h1>';
+  if (p.title && p.title.trim()) out += '<div class="cv-letter-head-title">' + esc(p.title.trim()) + '</div>';
+  return out + '</div>' + letterSender(data, false) + '</header>';
+}
+
+// Aufbau nach DIN 5008 Form B: Briefkopf bis 45 mm, darunter das 45 mm hohe
+// Anschriftfeld mit Rücksendeangabe und Empfänger (Text ab 25 mm vom linken
+// Rand), rechts daneben ab 125 mm Ort und Datum. Danach Betreff, Anrede, Text,
+// Gruß, Unterschrift, Anlagen. Schrift und Akzentfarbe kommen aus dem Layout,
+// die Schriftgröße folgt der Einstellung im Editor.
+function renderLetter(data, layout) {
+  var l = outputLang || 'de';
+  var letter = data.letter || {};
+  var accent = customStyle.accentColor || (layout && layout.accent) || '#333333';
+  var size = customStyle.fontSize ? (parseFloat(customStyle.fontSize) * 1.42).toFixed(1) + 'px' : '14px';
+  var head = layout && typeof layout.renderLetterHead === 'function' ? layout.renderLetterHead(data, helpers) : genericLetterHead(data);
+  var out = '<div class="cv-letter" style="--letter-accent:' + escAttr(accent) + '; font-size:' + size + '">';
+  out += '<div class="cv-letter-headzone">' + head + '</div>';
+  var ret = letterReturnLine(data);
+  out += '<div class="cv-letter-addrzone"><div class="cv-letter-address">';
+  out += '<div class="cv-letter-return">' + (ret ? '<span>' + esc(ret) + '</span>' : '') + '</div>';
+  out += '<div class="cv-letter-recipient">' + letterLinesHtml(letter.recipient) + '</div></div>';
+  var loc = asText(data.signatureLocation).trim();
+  out += '<div class="cv-letter-info"><div class="cv-letter-date">' + esc(loc ? loc + ', ' + docDateStr(l) : docDateStr(l)) + '</div></div></div>';
+  out += '<div class="cv-letter-body">';
+  if (asText(letter.subject).trim()) out += '<h2 class="cv-letter-subject">' + esc(letter.subject.trim()) + '</h2>';
+  out += '<p class="cv-letter-p cv-letter-salutation">' + esc(asText(letter.salutation).trim() || t('letter_salutation', l)) + '</p>';
+  asText(letter.body).split(/\r?\n\s*\r?\n/).map(function (s) { return s.trim(); }).filter(Boolean).forEach(function (para) {
+    out += '<p class="cv-letter-p">' + letterLinesHtml(para) + '</p>';
+  });
+  out += '<div class="cv-letter-end"><p class="cv-letter-closing">' + esc(asText(letter.closing).trim() || t('letter_closing', l)) + '</p>';
+  if (data.signature) out += '<img class="cv-letter-sig" src="' + escAttr(data.signature) + '" alt="' + escAttr(t('signature_alt', l)) + '">';
+  else out += '<div class="cv-letter-sig-space" aria-hidden="true"></div>';
+  out += '<p class="cv-letter-name">' + esc(displayName(data.personal && data.personal.name)) + '</p></div>';
+  if (asText(letter.enclosures).trim()) {
+    out += '<div class="cv-letter-enclosures"><div class="cv-letter-enclosures-label">' + esc(t('letter_enclosures', l)) + '</div>' + letterLinesHtml(letter.enclosures) + '</div>';
+  }
+  return out + '</div></div>';
 }
 
 function renderOptionalSections(data, lang) {
@@ -949,8 +1213,18 @@ function renderOptionalSections(data, lang) {
 // ═══════════════════════════════════════
 // ATS VALIDATION & TEXT EXTRACTION
 // ═══════════════════════════════════════
-function extractAtsText() {
-  var measure = document.getElementById('cv-measure');
+// Der ATS-Check prüft immer den Lebenslauf, auch wenn die Vorschau das
+// Anschreiben zeigt. Für den Text genügt das DOM; CSS ist dafür nicht nötig.
+function renderCvForAts() {
+  var layout = getLayouts()[currentLayout];
+  var box = document.createElement('div');
+  box.className = 'cv-root';
+  box.innerHTML = layout ? layout.render(visibleCvData(cvData), grouping, helpers) : '';
+  return box;
+}
+
+function extractAtsText(root) {
+  var measure = root || document.getElementById('cv-measure');
   if (!measure) return '';
   var clone = measure.cloneNode(true);
   
@@ -992,6 +1266,8 @@ function extractAtsText() {
 }
 
 function runAtsAudit(extractedText) {
+  // Geprüft wird, was im Lebenslauf steht: ausgeblendete Einträge zählen nicht.
+  var data = visibleCvData(cvData);
   var text = extractedText || '';
   var tech = [];
   var recruiter = [];
@@ -1001,7 +1277,7 @@ function runAtsAudit(extractedText) {
   // ═══════════════════════════════════════
   
   // A. Bewerbername & Identifikation
-  var name = (cvData.personal && cvData.personal.name) ? cvData.personal.name.trim() : '';
+  var name = (data.personal && data.personal.name) ? data.personal.name.trim() : '';
   var nameParts = name.replace(/[,.\s]+/g, ' ').split(' ').filter(Boolean);
   var hasName = nameParts.length > 0 && nameParts.every(function(part) {
     return text.toLowerCase().indexOf(part.toLowerCase()) >= 0;
@@ -1013,14 +1289,14 @@ function runAtsAudit(extractedText) {
   });
 
   // B. Kontaktdaten & LinkedIn
-  var email = (cvData.personal && cvData.personal.email) ? cvData.personal.email.trim() : '';
+  var email = (data.personal && data.personal.email) ? data.personal.email.trim() : '';
   var emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/;
   var hasEmail = email && emailRegex.test(email) && text.indexOf(email) >= 0;
 
-  var phone = (cvData.personal && cvData.personal.phone) ? cvData.personal.phone.trim() : '';
+  var phone = (data.personal && data.personal.phone) ? data.personal.phone.trim() : '';
   var hasPhone = phone && text.indexOf(phone) >= 0;
 
-  var linkedin = (cvData.personal && cvData.personal.linkedin) ? cvData.personal.linkedin.trim() : '';
+  var linkedin = (data.personal && data.personal.linkedin) ? data.personal.linkedin.trim() : '';
   var hasLinkedin = linkedin && linkedin.length > 4;
 
   var contactPass = hasEmail && hasPhone && hasLinkedin;
@@ -1062,11 +1338,11 @@ function runAtsAudit(extractedText) {
 
   // E. Datums-Konsistenz
   var allPeriods = [];
-  if (cvData.experience) {
-    cvData.experience.forEach(function(e) { if (e.period) allPeriods.push(e.period.trim()); });
+  if (data.experience) {
+    data.experience.forEach(function(e) { if (e.period) allPeriods.push(e.period.trim()); });
   }
-  if (cvData.education) {
-    cvData.education.forEach(function(e) { if (e.period) allPeriods.push(e.period.trim()); });
+  if (data.education) {
+    data.education.forEach(function(e) { if (e.period) allPeriods.push(e.period.trim()); });
   }
   var mmYyyyRegex = /^\d{2}\/\d{4}/;
   var hasMmYyyy = allPeriods.some(function(p) { return mmYyyyRegex.test(p) || /\d{2}\/\d{4}/.test(p); });
@@ -1093,8 +1369,8 @@ function runAtsAudit(extractedText) {
 
   // A. Quantifizierbare Erfolge (Numbers & Metrics in Bullets)
   var allTasks = [];
-  if (cvData.experience) {
-    cvData.experience.forEach(function(exp) {
+  if (data.experience) {
+    data.experience.forEach(function(exp) {
       if (exp.tasks && Array.isArray(exp.tasks)) {
         exp.tasks.forEach(function(t) {
           if (t && t.trim()) allTasks.push(t.trim());
@@ -1114,7 +1390,7 @@ function runAtsAudit(extractedText) {
   });
 
   // B. Kurzprofil / Executive Summary
-  var hasSummary = !!(cvData.personal && cvData.personal.highlight && cvData.personal.highlight.trim().length > 20);
+  var hasSummary = !!(data.personal && data.personal.highlight && data.personal.highlight.trim().length > 20);
   recruiter.push({
     title: 'Kurzprofil / Executive Summary',
     pass: hasSummary,
@@ -1132,7 +1408,7 @@ function runAtsAudit(extractedText) {
 
   // D. Zielmarkt-Check (DACH vs. US/UK)
   var isEnglish = (outputLang === 'en');
-  var hasBirthdate = !!(cvData.personal && cvData.personal.birthdate && cvData.personal.birthdate.trim());
+  var hasBirthdate = !!(data.personal && data.personal.birthdate && data.personal.birthdate.trim());
   var targetMarketPass = isEnglish ? !hasBirthdate : true;
   var targetMarketDesc = '';
   if (isEnglish) {
@@ -1146,25 +1422,41 @@ function runAtsAudit(extractedText) {
     desc: targetMarketDesc
   });
 
+  // E. Lückenloser Werdegang
+  var gapInfo = findCareerGaps(data);
+  var gapDesc;
+  if (!gapInfo.checked) {
+    gapDesc = 'Keine auswertbaren Zeiträume gefunden. Erkannt werden Angaben wie „01/2020 - 12/2022“, „2015 - 2018“ oder „seit 06/2026“.';
+  } else if (!gapInfo.gaps.length) {
+    gapDesc = 'Keine Lücken von mehr als 3 Monaten zwischen Berufserfahrung, Ausbildung, Projekten und Ehrenamt.';
+  } else {
+    gapDesc = (gapInfo.gaps.length === 1 ? '1 Lücke' : gapInfo.gaps.length + ' Lücken') + ' von mehr als 3 Monaten: ' +
+      gapInfo.gaps.map(function (g) { return formatMonthIndex(g.from) + ' – ' + formatMonthIndex(g.to) + ' (' + formatDuration(g.months, 'de') + ')'; }).join('; ') +
+      '. Personaler fragen hier häufig nach. Eine kurze Angabe zur Zeit dazwischen, etwa Weiterbildung, Elternzeit oder Jobsuche, beantwortet die Frage vorab.';
+  }
+  if (gapInfo.openSince !== null) gapDesc += ' Hinweis: Seit ' + formatMonthIndex(gapInfo.openSince) + ' gibt es keinen laufenden Eintrag.';
+  if (gapInfo.unreadable.length) {
+    gapDesc += ' Nicht geprüft, weil der Zeitraum nicht lesbar ist: ' + gapInfo.unreadable.map(function (p) { return '„' + esc(p) + '“'; }).join(', ') + '.';
+  }
+  recruiter.push({
+    title: 'Lückenloser Werdegang',
+    pass: gapInfo.checked > 0 && gapInfo.gaps.length === 0,
+    desc: gapDesc
+  });
+
   return { technical: tech, recruiter: recruiter };
 }
 
 var currentAtsTab = 'tech';
+var ATS_TABS = ['tech', 'content', 'posting', 'letter', 'stream'];
 function switchAtsTab(tab) {
-  currentAtsTab = tab;
-  var bTech = document.getElementById('tab-btn-tech');
-  var bContent = document.getElementById('tab-btn-content');
-  var bStream = document.getElementById('tab-btn-stream');
-  if (bTech) bTech.classList.toggle('on', tab === 'tech');
-  if (bContent) bContent.classList.toggle('on', tab === 'content');
-  if (bStream) bStream.classList.toggle('on', tab === 'stream');
-
-  var pTech = document.getElementById('ats-tab-panel-tech');
-  var pContent = document.getElementById('ats-tab-panel-content');
-  var pStream = document.getElementById('ats-tab-panel-stream');
-  if (pTech) pTech.style.display = (tab === 'tech') ? 'flex' : 'none';
-  if (pContent) pContent.style.display = (tab === 'content') ? 'flex' : 'none';
-  if (pStream) pStream.style.display = (tab === 'stream') ? 'flex' : 'none';
+  currentAtsTab = ATS_TABS.indexOf(tab) >= 0 ? tab : 'tech';
+  ATS_TABS.forEach(function (key) {
+    var btn = document.getElementById('tab-btn-' + key);
+    var panel = document.getElementById('ats-tab-panel-' + key);
+    if (btn) btn.classList.toggle('on', key === currentAtsTab);
+    if (panel) panel.style.display = key === currentAtsTab ? 'flex' : 'none';
+  });
 }
 
 function renderAtsCheckList(items, containerId) {
@@ -1190,7 +1482,7 @@ function openAtsModal() {
   var modal = document.getElementById('ats-modal');
   if (!modal) return;
   
-  var stream = extractAtsText();
+  var stream = extractAtsText(renderCvForAts());
   var audit = runAtsAudit(stream);
   
   // Technical checks
@@ -1219,7 +1511,7 @@ function openAtsModal() {
   var recBadgeEl = document.getElementById('ats-content-badge');
   if (recBadgeEl) {
     var recPct = Math.round((recPassed/recTotal)*100);
-    var recSuccess = recPassed >= 3;
+    var recSuccess = recPassed >= recTotal - 1;
     recBadgeEl.className = 'ats-badge ' + (recSuccess ? 'success' : 'warning');
     var recIcon = recSuccess
       ? '<div class="ats-badge-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></div>'
@@ -1237,8 +1529,753 @@ function openAtsModal() {
   var preEl = document.getElementById('ats-raw-stream');
   if (preEl) preEl.textContent = stream;
 
+  postingCvText = stream;
+  var postingInput = document.getElementById('posting-text');
+  if (postingInput) postingInput.value = cvData.posting.text || '';
+  renderPostingResult();
+  renderLetterCheck();
+
   switchAtsTab(currentAtsTab || 'tech');
   modal.classList.add('on');
+}
+
+// ═══════════════════════════════════════
+// ABGLEICH MIT STELLENANZEIGE
+// ═══════════════════════════════════════
+// Ohne KI: Fachbegriffe, Abkürzungen und Substantive der Anzeige werden im Text
+// des Lebenslaufs gesucht. Wortendungen und Wortteile werden angeglichen,
+// Bedeutungen nicht ("Einkauf" und "Beschaffung" bleiben verschiedene Wörter).
+var POSTING_STOPWORDS = {};
+('aber alle allem allen aller alles als also am an andere anderen anderer anderes auch auf aus bei beim bin bis bist bzw da dabei daher damit dann darf das dass dazu dein deine deinem deinen deiner dem den denn der des dich die dies diese diesem diesen dieser dieses dir doch dort du durch ein eine einem einen einer eines er es etc etwa euch euer eure für gegen gerne gern ggf haben habe hast hat hatte hier ich ihm ihn ihnen ihr ihre ihrem ihren ihrer ihres im in ins insbesondere ist ja je jede jedem jeden jeder jedes jedoch kann kannst kein keine keinem keinen keiner können könnte man mehr mein meine mich mir mit möchte möchten muss müssen nach neben nicht noch nur ob oder ohne seid sein seine seinem seinen seiner seit sich sie sind so sollen sollte sowie sowohl über um und uns unser unsere unserem unseren unserer unter usw viel viele vom von vor während war waren was weil weiter welche welchen wenn wer werden wie wir wird wo wollen wurde zu zum zur zwischen sehr gut gute guten guter gutes hohe hohen hoher neue neuen neues bieten bietet suchen sucht freuen freut erwartet erwarten idealerweise vorzugsweise bereits mwd ' +
+ 'a about above after all also an and any are as at be been being both but by can could did do does each for from had has have he her his how i if into is it its may me might more most must my no nor not of on once only or other our out over own per same she should some such than that the their them then there these they this those through to too under until up us very via was we were what when where which while who whom why will with within would you your join looking strong excellent great plus nice ideal ideally including include')
+  .split(' ').forEach(function (w) { POSTING_STOPWORDS[w] = true; });
+// Wörter, die in fast jeder Anzeige stehen und nichts über die Stelle sagen
+var POSTING_NOISE = {};
+('abschluss anforderung anforderungen angebot ansprechpartner ansprechpartnerin arbeitsplatz arbeitsumfeld arbeitsweise arbeitszeit arbeitszeiten atmosphäre aufgabe aufgaben aufgabenbereich aufgabengebiet ausbildung benefits bereich bereiche bereichen bewerbung bewerbungen chance chancen einarbeitung eintrittstermin entwicklung erfahrung erfahrungen events firmenwagen freude gehalt gehaltsvorstellung herausforderung herausforderungen homeoffice interesse jahr jahre jahren kenntnis kenntnisse kollegen kolleginnen kontakt kultur leidenschaft menschen mitarbeitende mitarbeitenden mitarbeiter mitarbeiterin mitarbeiterinnen möglichkeit möglichkeiten monat monate parkplatz parkplätze perspektive perspektiven position positionen profil qualifikation qualifikationen rahmen spaß standort standorte stelle stellen studium tag tage tätigkeit tätigkeiten team teams teilzeit umfeld unterlagen unternehmen unterstützung urlaub verantwortung vergütung vollzeit voraussetzung voraussetzungen weiterentwicklung wert werte wertschätzung woche wochen zukunft zusammenarbeit ' +
+ 'ability abilities application apply benefits candidate candidates company culture day days degree development environment experience growth hybrid job knowledge office opportunities opportunity people position qualification qualifications remote requirement requirements responsibilities responsibility role salary skill skills team teams time week weeks work working year years')
+  .split(' ').forEach(function (w) { POSTING_NOISE[w] = true; });
+var POSTING_DE_HINTS = { der: 1, die: 1, das: 1, und: 1, mit: 1, für: 1, wir: 1, sie: 1, ist: 1, ein: 1, eine: 1, von: 1, auf: 1, im: 1, zu: 1 };
+var POSTING_EN_HINTS = { the: 1, and: 1, with: 1, for: 1, we: 1, you: 1, is: 1, a: 1, to: 1, of: 1, in: 1, on: 1, our: 1, are: 1 };
+var POSTING_MAX_TERMS = 40;
+var postingCvText = '';
+var lastPostingTerms = [];
+var lastPostingIgnored = [];
+var postingTimer = null;
+
+function postingStem(word) {
+  var w = String(word || '').toLowerCase();
+  if (/[^a-zäöüß]/.test(w) || w.length <= 5) return w;
+  return w.replace(/ungen$/, 'ung').replace(/innen$/, 'in').replace(/(en|er|es|e|n|s)$/, '');
+}
+
+function postingAtSentenceStart(text, idx) {
+  for (var i = idx - 1; i >= 0; i--) {
+    var c = text.charAt(i);
+    if (c === ' ' || c === '\t') continue;
+    return /[\n\r.!?:;•·*–—(\u25CF\u25AA\u2713\u2714-]/.test(c);
+  }
+  return true;
+}
+
+function postingEscapeRe(s) { return s.replace(/[.*+?^$(){}|[\]\\\/]/g, '\\$&'); }
+
+// Liefert { terms, ignored }: terms sind die bis zu 40 häufigsten nicht
+// ausgeblendeten Begriffe mit found, ignored die ausgeblendeten dieser Anzeige.
+function analyzePosting(text, cvText, ignoredKeys, letterText) {
+  text = String(text || '');
+  var re = /[A-Za-zÄÖÜäöüß0-9][A-Za-zÄÖÜäöüß0-9+#&.\/-]*/g, m, tokens = [];
+  while ((m = re.exec(text))) {
+    var raw = m[0].replace(/[.&\/-]+$/, '');
+    if (raw) tokens.push({ raw: raw, start: m.index, end: m.index + raw.length });
+  }
+  var lowerSeen = {}, de = 0, en = 0;
+  tokens.forEach(function (tk) {
+    var lw = tk.raw.toLowerCase();
+    if (/^[a-zäöüß]/.test(tk.raw)) lowerSeen[lw] = true;
+    if (POSTING_DE_HINTS[lw]) de++;
+    if (POSTING_EN_HINTS[lw]) en++;
+  });
+  var english = en > de;
+
+  function isTech(raw) {
+    return (/[A-Za-zÄÖÜäöü]/.test(raw) && /[0-9+#\/]/.test(raw)) || /^[A-ZÄÖÜ]{2,}$/.test(raw) || /[a-zäöüß][A-ZÄÖÜ]/.test(raw);
+  }
+  function kindOf(i) {
+    var tk = tokens[i], raw = tk.raw, lw = raw.toLowerCase();
+    if (!/[A-Za-zÄÖÜäöüß]/.test(raw)) return null;
+    if (POSTING_STOPWORDS[lw] || POSTING_NOISE[lw] || /^(m\/w\/d|w\/m\/d|m\/f\/d|d\/m\/w)$/i.test(raw)) return null;
+    if (isTech(raw)) return 'tech';
+    if (raw.length < 4) return null;
+    var atStart = postingAtSentenceStart(text, tk.start);
+    if (english) {
+      // Englisch schreibt Substantive klein: Großschreibung mitten im Satz sind
+      // Namen und Produkte, sonstige Wörter zählen nur bei mehrfacher Nennung.
+      if (/^[A-Z]/.test(raw) && !lowerSeen[lw] && !atStart) return 'word';
+      return raw.length >= 5 ? 'en-lower' : null;
+    }
+    if (/^[A-ZÄÖÜ][a-zäöüß]/.test(raw)) {
+      if (lowerSeen[lw]) return null; // kommt auch kleingeschrieben vor: kein Substantiv
+      // Am Satz- oder Zeilenanfang vor einem großgeschriebenen Wort steht meist
+      // ein Adjektiv: "Abgeschlossenes Studium", "Fundierte Kenntnisse".
+      var next = tokens[i + 1];
+      if (atStart && next && /^[A-ZÄÖÜ]/.test(next.raw) && text.slice(tk.end, next.start) === ' ' && /(e|es|er|en|em)$/.test(lw)) return null;
+      return 'word';
+    }
+    return null;
+  }
+
+  var byKey = {}, all = [];
+  function addTerm(display, start, end, kind) {
+    var key = kind === 'word' ? postingStem(display) : display.toLowerCase();
+    var term = byKey[key];
+    if (!term) { term = byKey[key] = { key: key, display: display, kind: kind, count: 0, first: start, spans: [] }; all.push(term); }
+    term.count++;
+    term.spans.push([start, end]);
+  }
+  for (var i = 0; i < tokens.length; i++) {
+    var kind = kindOf(i);
+    if (!kind) continue;
+    var next = tokens[i + 1];
+    // Zweiteilige Fachbegriffe wie "Power BI", "SAP MM" oder "SAP S/4HANA"
+    if (next && text.slice(tokens[i].end, next.start) === ' ' && /^[A-Z0-9][A-Z0-9\/+#.]{1,9}$/.test(next.raw) && /[A-Z]/.test(next.raw) && !POSTING_STOPWORDS[next.raw.toLowerCase()]) {
+      addTerm(tokens[i].raw + ' ' + next.raw, tokens[i].start, next.end, 'tech');
+      i++;
+      continue;
+    }
+    addTerm(tokens[i].raw, tokens[i].start, tokens[i].end, kind);
+  }
+  all = all.filter(function (t) { return t.kind !== 'en-lower' || t.count >= 2; });
+  all.sort(function (a, b) { return b.count - a.count || a.first - b.first; });
+
+  var cv = String(cvText || '').toLowerCase();
+  var longWords = {};
+  (cv.match(/[a-zäöüß]{8,}/g) || []).forEach(function (w) { longWords[postingStem(w)] = true; });
+  var longList = Object.keys(longWords);
+  var ignored = ignoredKeys || [];
+  var active = all.filter(function (t) { return ignored.indexOf(t.key) < 0; }).slice(0, POSTING_MAX_TERMS);
+  active.forEach(function (t) { t.found = postingTermFound(t, cv, longList); });
+  // Begriffe, die im Lebenslauf fehlen, aber im Anschreiben (Betreff, Text) stehen
+  var lt = String(letterText || '').toLowerCase();
+  var letterLong = {};
+  (lt.match(/[a-zäöüß]{8,}/g) || []).forEach(function (w) { letterLong[postingStem(w)] = true; });
+  var letterList = Object.keys(letterLong);
+  active.forEach(function (t) { t.inLetter = !t.found && !!lt && postingTermFound(t, lt, letterList); });
+  return { terms: active, ignored: all.filter(function (t) { return ignored.indexOf(t.key) >= 0; }), english: english };
+}
+
+function postingTermFound(term, cv, longList) {
+  if (term.kind !== 'word') {
+    var phrase = term.display.toLowerCase();
+    return new RegExp('(^|[^a-z0-9äöüß])' + postingEscapeRe(phrase) + '(?=$|[^a-z0-9äöüß])').test(cv);
+  }
+  var stem = term.key;
+  if (stem.length >= 4 && cv.indexOf(stem) >= 0) return true; // auch als Wortteil
+  // Allgemeine Wortenden zählen nicht: "Englischkenntnisse" ist mit "Englisch" abgedeckt.
+  var core = term.display.toLowerCase().replace(/(kenntnisse|kenntnis|erfahrungen|erfahrung|fähigkeiten|fähigkeit|verständnis|kompetenzen|kompetenz)$/, '');
+  if (core !== term.display.toLowerCase() && core.length >= 4 && cv.indexOf(core) >= 0) return true;
+  // Ein langes Wort des Lebenslaufs als großer Teil des Begriffs:
+  // "Projektmanagement" deckt "Projektmanagementerfahrung" ab, "Management"
+  // aber nicht "Lieferantenmanagement".
+  for (var i = 0; i < longList.length; i++) {
+    if (longList[i].length >= stem.length * 0.6 && stem.indexOf(longList[i]) >= 0) return true;
+  }
+  return false;
+}
+
+function postingMarkedHtml(text, terms) {
+  var spans = [];
+  terms.forEach(function (t) {
+    t.spans.forEach(function (s) { spans.push({ start: s[0], end: s[1], cls: t.found ? 'found' : (t.inLetter ? 'letter' : 'missing') }); });
+  });
+  spans.sort(function (a, b) { return a.start - b.start; });
+  var out = '', pos = 0;
+  spans.forEach(function (s) {
+    if (s.start < pos) return;
+    out += esc(text.slice(pos, s.start)) + '<mark class="posting-mark ' + s.cls + '">' + esc(text.slice(s.start, s.end)) + '</mark>';
+    pos = s.end;
+  });
+  return out + esc(text.slice(pos));
+}
+
+function renderPostingResult() {
+  var box = document.getElementById('posting-result');
+  var pill = document.getElementById('posting-score-num');
+  if (!box) return;
+  var text = cvData.posting.text || '';
+  if (!text.trim()) {
+    lastPostingTerms = [];
+    lastPostingIgnored = [];
+    if (pill) pill.textContent = '–';
+    box.innerHTML = '<div class="posting-hint">Fügen Sie oben den Text einer Stellenanzeige ein. Danach erscheint hier, welche Begriffe der Anzeige im Lebenslauf vorkommen und welche fehlen.</div>';
+    return;
+  }
+  var letterText = asText(cvData.letter && cvData.letter.subject) + '\n' + asText(cvData.letter && cvData.letter.body);
+  var res = analyzePosting(text, postingCvText, cvData.posting.ignored, letterText);
+  var found = res.terms.filter(function (t) { return t.found; });
+  var inLetter = res.terms.filter(function (t) { return !t.found && t.inLetter; });
+  var missing = res.terms.filter(function (t) { return !t.found && !t.inLetter; });
+  var hasLetter = !!letterText.trim();
+  lastPostingTerms = res.terms;
+  lastPostingIgnored = res.ignored.map(function (t) { return t.key; });
+  if (pill) pill.textContent = res.terms.length ? found.length + '/' + res.terms.length : '–';
+
+  function chip(term, cls) {
+    return '<span class="posting-chip ' + cls + '">' + esc(term.display) +
+      '<button type="button" class="posting-chip-x" onclick="ignorePostingTerm(' + res.terms.indexOf(term) + ')" title="Ausblenden" aria-label="' + escAttr(term.display + ' ausblenden') + '">×</button></span>';
+  }
+  var html = res.terms.length
+    ? '<div class="posting-summary">' + found.length + ' von ' + res.terms.length + ' Begriffen der Anzeige kommen im Lebenslauf vor.' + (inLetter.length ? ' ' + inLetter.length + ' weitere ' + (inLetter.length === 1 ? 'steht' : 'stehen') + ' nur im Anschreiben.' : '') + '</div>'
+    : '<div class="posting-summary">Keine Begriffe erkannt.</div>';
+  if (missing.length) html += '<div class="posting-group"><div class="posting-group-label">' + (hasLetter ? 'Fehlt in Lebenslauf und Anschreiben' : 'Fehlt im Lebenslauf') + ' (' + missing.length + ')</div><div class="posting-chips">' + missing.map(function (t) { return chip(t, 'missing'); }).join('') + '</div></div>';
+  if (inLetter.length) html += '<div class="posting-group"><div class="posting-group-label">Nur im Anschreiben (' + inLetter.length + ')</div><div class="posting-chips">' + inLetter.map(function (t) { return chip(t, 'letter'); }).join('') + '</div></div>';
+  if (found.length) html += '<div class="posting-group"><div class="posting-group-label">Im Lebenslauf (' + found.length + ')</div><div class="posting-chips">' + found.map(function (t) { return chip(t, 'found'); }).join('') + '</div></div>';
+  if (res.ignored.length) {
+    html += '<div class="posting-group"><div class="posting-group-label">Ausgeblendet (' + res.ignored.length + ')</div><div class="posting-chips">' +
+      res.ignored.map(function (t, i) { return '<button type="button" class="posting-chip ignored" onclick="restorePostingTerm(' + i + ')" title="Wieder einblenden">' + esc(t.display) + ' ↺</button>'; }).join('') + '</div></div>';
+  }
+  html += '<div class="posting-hint">Ergänzen Sie nur Begriffe, die auf Sie zutreffen; hineinkopierte Schlagwörter fallen Personalern sofort auf. Der Abgleich versteht keine Bedeutungen: „Einkauf“ und „Beschaffung“ gelten als verschiedene Wörter. Unpassende Begriffe lassen sich mit × ausblenden.</div>';
+  html += '<div class="posting-group"><div class="posting-group-label">Anzeige mit Markierungen</div><div class="posting-marked">' + postingMarkedHtml(text, res.terms) + '</div></div>';
+  box.innerHTML = html;
+}
+
+function updatePostingText(v) {
+  cvData.posting.text = v;
+  if (postingTimer) clearTimeout(postingTimer);
+  postingTimer = setTimeout(function () { renderPostingResult(); renderLetterCheck(); saveToLocalStorage(); }, 300);
+}
+
+function ignorePostingTerm(idx) {
+  var term = lastPostingTerms[idx];
+  if (!term) return;
+  if (cvData.posting.ignored.indexOf(term.key) < 0) cvData.posting.ignored.push(term.key);
+  renderPostingResult();
+  saveToLocalStorage();
+}
+
+function restorePostingTerm(idx) {
+  var key = lastPostingIgnored[idx];
+  cvData.posting.ignored = cvData.posting.ignored.filter(function (k) { return k !== key; });
+  renderPostingResult();
+  saveToLocalStorage();
+}
+
+// ═══════════════════════════════════════
+// ANSCHREIBEN-CHECK
+// ═══════════════════════════════════════
+// Ohne KI: Faustregeln für den Brieftext und ein Abgleich mit dem, was die
+// eingefügte Stellenanzeige verlangt. Geprüft wird der Brief aus dem Editor.
+// Die Zahl am Reiter zählt nirgends sonst mit.
+var LETTER_MIN_WORDS = 200;
+var LETTER_MAX_WORDS = 450;
+var LETTER_LONG_SENTENCE = 25;
+var LETTER_MAX_TRAITS = 2;
+var LETTER_ABBREV = {};
+('bzw ca dr nr inkl ggf evtl usw etc bspw vgl hr fr mio mrd tel str prof dipl ing abt gem lt max min zzgl mr mrs ms eg ie vs jr sr co ltd inc')
+  .split(' ').forEach(function (w) { LETTER_ABBREV[w] = true; });
+var LETTER_MONTHS = /^(januar|februar|märz|april|mai|juni|juli|august|september|oktober|november|dezember|jan|feb|mär|apr|jun|jul|aug|sep|okt|nov|dez)/i;
+var LETTER_PHRASES = [
+  { re: /hiermit\s+bewerbe\s+ich\s+mich/gi, label: 'hiermit bewerbe ich mich' },
+  { re: /mit\s+(?:großem|großer|viel|besonderem)\s+interesse\s+habe\s+ich/gi, label: 'mit großem Interesse habe ich …' },
+  { re: /(?:ihre|die)\s+(?:stellen)?(?:anzeige|ausschreibung)\s+(?:[a-zäöüß-]+\s+){0,8}gelesen/gi, label: 'Ihre Anzeige … gelesen' },
+  { re: /aufmerksam\s+geworden/gi, label: '… aufmerksam geworden' },
+  { re: /(?:hat|haben)\s+(?:sofort\s+|direkt\s+|gleich\s+)?mein\s+interesse\s+geweckt/gi, label: '… hat mein Interesse geweckt' },
+  { re: /(?:neue[nr]?|spannende[nr]?)\s+herausforderung(?:en)?/gi, label: 'neue Herausforderung' },
+  { re: /anbei\s+(?:sende|übersende|erhalten|finden)/gi, label: 'anbei sende ich Ihnen …' },
+  { re: /für\s+(?:weitere\s+)?(?:rückfragen|fragen)\s+stehe\s+ich\s+(?:ihnen\s+)?(?:jederzeit\s+)?(?:gerne?\s+)?zur\s+verfügung/gi, label: 'für Rückfragen stehe ich zur Verfügung' },
+  { re: /in\s+erwartung\s+ihrer\s+(?:antwort|rückmeldung|nachricht)/gi, label: 'in Erwartung Ihrer Antwort' },
+  { re: /(?:bin|wäre)\s+(?:ich\s+)?(?:genau\s+)?(?:der|die)\s+(?:richtige|passende|ideale)(?:\s+(?:kandidat|kandidatin|bewerber|bewerberin|person|besetzung))?/gi, label: 'der/die Richtige' }
+];
+var LETTER_SUBJUNCTIVE = /(^|[^A-Za-zÄÖÜäöüß])(würde|würden|würdest|könnte|könnten|hätte|hätten|wäre|wären|möchte|möchten|dürfte|dürften)(?![A-Za-zÄÖÜäöüß])/gi;
+var LETTER_TRAITS = /(^|[^A-Za-zÄÖÜäöüß])((?:hoch)?(?:teamfähig|teamplayer|belastbar|flexib|zuverlässig|motiviert|engagiert|kommunikationsstark|kommunikationsstärke|zielstrebig|zielorientiert|ehrgeizig|lernbereit|kreativ|selbstständig|selbständig|ergebnisorientiert|lösungsorientiert|dynamisch|kontaktfreudig|durchsetzungsstark)[a-zäöüß]*)/gi;
+var LETTER_GENDER_TAG = /\(\s*(?:all genders|alle geschlechter|gn\*?|divers|[mwdf](?:\s*[\/|,]\s*[a-z*]{1,6}){1,3})\s*\)/i;
+var LETTER_NAME_STOP = {};
+('telefon tel telefonnummer mobil fon fax mail email e-mail personal personalabteilung recruiting recruiter recruiterin talent human abteilung fragen bewerbung bewerbungen team hr people leitung leiter leiterin referent referentin manager managerin sachbearbeiter sachbearbeiterin unter per via')
+  .split(' ').forEach(function (w) { LETTER_NAME_STOP[w] = true; });
+var POSTING_DOCS = [
+  { label: 'Lebenslauf', posting: /lebenslauf|\bcv\b|curriculum vitae|resume|résumé/i, encl: /lebenslauf|\bcv\b|curriculum|resume|résumé/i },
+  { label: 'Zeugnisse', posting: /zeugnis/i, encl: /zeugnis/i },
+  { label: 'Zertifikate oder Nachweise', posting: /zertifikat|nachweis|certificate/i, encl: /zertifikat|nachweis|certificate|weiterbildung/i },
+  { label: 'Arbeitsproben', posting: /arbeitsprobe|portfolio|work sample/i, encl: /arbeitsprobe|portfolio|sample/i },
+  { label: 'Referenzen', posting: /referenz(?!nummer|-?nr)|references/i, encl: /referenz|reference/i }
+];
+var lastLetterSalutation = '';
+var LETTER_PLACEHOLDER = /\[[^\[\]\n]{1,40}\]/g;
+var LETTER_SENTENCES = {
+  salary: { de: 'Meine Gehaltsvorstellung liegt bei [Betrag] € brutto im Jahr.', en: 'My salary expectation is [amount] EUR gross per year.' },
+  start: { de: 'Mein frühester Eintrittstermin ist der [Datum].', en: 'My earliest possible start date is [date].' }
+};
+
+// Platzhalter wie "[Betrag]", die noch im Brief stehen
+function letterPlaceholders(letter) {
+  var found = [];
+  LETTER_FIELDS.forEach(function (f) {
+    (asText(letter && letter[f]).match(LETTER_PLACEHOLDER) || []).forEach(function (p) { if (found.indexOf(p) < 0) found.push(p); });
+  });
+  return found;
+}
+
+// Satz ans Ende des vorletzten Absatzes setzen (vor den Schlussabsatz); bei einem Absatz ans Ende
+function letterInsertSentence(body, sentence) {
+  var paras = asText(body).split(/\r?\n[ \t]*\r?\n/).map(function (p) { return p.replace(/\s+$/, '').replace(/^\s*\n/, ''); }).filter(function (p) { return p.trim(); });
+  if (!paras.length) return sentence;
+  var i = paras.length >= 2 ? paras.length - 2 : 0;
+  paras[i] = paras[i] + ' ' + sentence;
+  return paras.join('\n\n');
+}
+
+function insertLetterSentence(kind) {
+  var s = LETTER_SENTENCES[kind];
+  if (!s) return;
+  cvData.letter.body = letterInsertSentence(cvData.letter.body, letterIsEnglish(cvData.letter.body) ? s.en : s.de);
+  renderEditor();
+  renderPreview();
+  saveToLocalStorage();
+  renderLetterCheck();
+}
+
+// Sätze mit Position im Text. Absätze und Zeilenumbrüche beenden immer einen Satz;
+// Abkürzungen wie "z. B." oder "ca." und Daten wie "1. März" nicht.
+function letterSentences(text) {
+  var src = asText(text);
+  var res = [];
+  var start = 0;
+  var re = /[.!?]+["“”'’)]*(?=\s|$)|\n/g, m;
+  function push(a, b) {
+    while (a < b && /\s/.test(src.charAt(a))) a++;
+    while (b > a && /\s/.test(src.charAt(b - 1))) b--;
+    if (b > a && /[A-Za-zÄÖÜäöüß0-9]/.test(src.slice(a, b))) res.push({ start: a, end: b, text: src.slice(a, b) });
+  }
+  while ((m = re.exec(src))) {
+    var endIdx = m.index + m[0].length;
+    if (m[0] !== '\n') {
+      var after = src.slice(endIdx).replace(/^[ \t]+/, '');
+      if (/^[a-zäöüß]/.test(after)) continue;
+      if (m[0].charAt(0) === '.' && m[0].length === 1) {
+        var before = src.slice(start, m.index).match(/([A-Za-zÄÖÜäöüß]+|\d+)$/);
+        var w = before ? before[1] : '';
+        if (/^[A-Za-zÄÖÜäöüß]$/.test(w) || LETTER_ABBREV[w.toLowerCase()]) continue;
+        if (/^\d+$/.test(w) && LETTER_MONTHS.test(after)) continue;
+      }
+    }
+    push(start, m[0] === '\n' ? m.index : endIdx);
+    start = endIdx;
+  }
+  push(start, src.length);
+  return res;
+}
+
+function letterWordCount(text) {
+  return asText(text).split(/\s+/).filter(function (w) { return /[A-Za-zÄÖÜäöüß0-9]/.test(w); }).length;
+}
+
+function letterSnippet(text, max) {
+  var s = asText(text).replace(/\s+/g, ' ').trim();
+  if (s.length <= max) return s;
+  var cut = s.slice(0, max);
+  var sp = cut.lastIndexOf(' ');
+  return (sp > max * 0.6 ? cut.slice(0, sp) : cut) + ' …';
+}
+
+function letterIsEnglish(body) {
+  var words = asText(body).toLowerCase().match(/[a-zäöüß]+/g) || [];
+  var de = 0, en = 0;
+  words.forEach(function (w) { if (POSTING_DE_HINTS[w]) de++; if (POSTING_EN_HINTS[w]) en++; });
+  if (!de && !en) return outputLang === 'en';
+  return en > de;
+}
+
+// Firmenname aus dem Empfänger: erste Zeile, die keine Person ist, ohne Rechtsform
+function letterCompanyName(recipient) {
+  var lines = asText(recipient).split(/\r?\n/).map(function (s) { return s.trim(); }).filter(Boolean);
+  for (var i = 0; i < lines.length; i++) {
+    if (/^(frau|herrn?|z\.\s*hd\.?|zu\s+händen|attn\.?|c\/o|ms\.?|mrs\.?|mr\.?)(\s|$)/i.test(lines[i])) continue;
+    return lines[i]
+      .replace(/(^|\s)(gmbh\s*&\s*co\.?\s*kg(aa)?|ggmbh|gmbh|mbh|ag|se|kgaa|kg|ohg|gbr|e\.\s?v\.|e\.\s?k\.|ug(\s*\(haftungsbeschränkt\))?|ltd\.?|inc\.?|llc|plc|s\.\s?a\.|co\.)(?=\s|$|,)/gi, ' ')
+      .replace(/[,&]+/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+  return '';
+}
+
+// Stellentitel: Zeile mit "(m/w/d)" o. ä., Text davor; sonst die erste kurze Zeile
+function postingJobTitle(text) {
+  var lines = asText(text).split(/\r?\n/).map(function (s) { return s.trim(); }).filter(Boolean);
+  for (var i = 0; i < lines.length && i < 60; i++) {
+    var m = lines[i].match(LETTER_GENDER_TAG);
+    if (m) {
+      var t = lines[i].slice(0, m.index).replace(/[\s,:;–—-]+$/, '').trim();
+      if (t.length >= 3) return t;
+    }
+  }
+  return lines.length && lines[0].length <= 80 ? lines[0] : '';
+}
+
+function letterNormTitle(s) {
+  return asText(s).replace(LETTER_GENDER_TAG, ' ').toLowerCase().replace(/[^a-z0-9äöüß+#\/]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+// Ansprechperson der Anzeige mit Anrede. Bevorzugt die Person nach einem Kontaktwort.
+function postingContact(text) {
+  var src = asText(text);
+  var people = [];
+  var re = /(^|[^A-Za-zÄÖÜäöüß])(Frau|Herrn?|Ms\.?|Mrs\.?|Mr\.?)\s+((?:(?:Dr|Prof)\.\s*)*)((?:[A-ZÄÖÜ][a-zäöüß'’-]+\s+){0,2}[A-ZÄÖÜ][a-zäöüß'’-]+)/g, m;
+  function cleanName(raw) {
+    var parts = raw.split(/\s+/), keep = [];
+    for (var i = 0; i < parts.length; i++) { if (LETTER_NAME_STOP[parts[i].toLowerCase()]) break; keep.push(parts[i]); }
+    return keep;
+  }
+  while ((m = re.exec(src))) {
+    var parts = cleanName(m[4]);
+    if (!parts.length) continue;
+    people.push({ idx: m.index + m[1].length, female: !/^(herrn?|mr\.?)$/i.test(m[2]), titles: m[3].replace(/\s+/g, ' ').trim(), last: parts[parts.length - 1] });
+  }
+  if (!people.length) {
+    var f = src.match(/Ansprechpartnerin\s*(?:ist\s*|:\s*)?((?:(?:Dr|Prof)\.\s*)*)((?:[A-ZÄÖÜ][a-zäöüß'’-]+\s+){0,2}[A-ZÄÖÜ][a-zäöüß'’-]+)/);
+    if (!f) return null;
+    var fp = cleanName(f[2]);
+    return fp.length ? { female: true, titles: f[1].replace(/\s+/g, ' ').trim(), last: fp[fp.length - 1] } : null;
+  }
+  var kw = /ansprechpartner|ansprechperson|kontakt|fragen|wenden sie sich|erreichen sie|bewerbung an|contact|questions|reach out/gi, k;
+  while ((k = kw.exec(src))) {
+    for (var i = 0; i < people.length; i++) {
+      if (people[i].idx >= k.index && people[i].idx - k.index <= 150) return people[i];
+    }
+  }
+  var names = {};
+  people.forEach(function (p) { names[p.last] = true; });
+  return Object.keys(names).length === 1 ? people[0] : null;
+}
+
+function postingContactSalutation(c, english) {
+  var t = c.titles ? c.titles + ' ' : '';
+  if (english) return 'Dear ' + (/dr\./i.test(c.titles) ? 'Dr ' : (c.female ? 'Ms ' : 'Mr ')) + c.last + ',';
+  return (c.female ? 'Sehr geehrte Frau ' : 'Sehr geehrter Herr ') + t + c.last + ',';
+}
+
+function postingRequestedDocs(text) {
+  var ctx = /unterlagen|bewerbung|zusenden|zuschicken|senden sie|schicken sie|übermitteln|hochladen|einreichen|beifügen|application|apply|send us|upload|submit/i;
+  var found = [];
+  asText(text).split(/[.!?]\s+|\n+/).forEach(function (s) {
+    if (!ctx.test(s)) return;
+    POSTING_DOCS.forEach(function (d) { if (d.posting.test(s) && found.indexOf(d) < 0) found.push(d); });
+  });
+  return found;
+}
+
+function postingRequests(text) {
+  var t = asText(text);
+  var code = t.match(/(?:kennziffer|kennzahl|referenznummer|referenz-?nr\.?|ref\.?\s?-?nr\.?|stellen-?id|stellennummer|stellen-?nr\.?|job-?id|job-?nummer|job reference|reference(?: number| code| no\.?)?)\s*(?:lautet\s*)?[:#.]?\s*([A-Za-z0-9][A-Za-z0-9\-\/_.]{1,30}[A-Za-z0-9])/i);
+  return {
+    salary: /gehaltsvorstellung|gehaltswunsch|gehaltsangabe|vergütungsvorstellung|einkommensvorstellung|salary expectation|salary requirement|desired salary|expected salary/i.test(t),
+    start: /eintrittstermin|eintrittsdatum|frühest(?:möglich)?(?:e[nmr]?)?\s+(?:eintritt|start|beginn|termin)|verfügbarkeit|kündigungsfrist|starttermin|startdatum|start date|earliest (?:possible )?start|availability|notice period/i.test(t),
+    code: code && /\d/.test(code[1]) ? code[1] : '',
+    contact: postingContact(t),
+    docs: postingRequestedDocs(t)
+  };
+}
+
+function letterQuote(s) { return '„' + esc(s) + '“'; }
+
+function analyzeLetter(letter, postingText, fixedDate, now) {
+  letter = letter || {};
+  var body = asText(letter.body);
+  var res = { style: [], requests: [], formal: [], marks: [], body: body, hasBody: !!body.trim(), hasPosting: !!asText(postingText).trim(), english: false, styleLangSkipped: false, jobTitle: '' };
+  var english = res.english = letterIsEnglish(body);
+
+  if (res.hasBody) {
+    var sentences = letterSentences(body);
+    var words = letterWordCount(body);
+
+    // Länge
+    res.style.push({
+      title: 'Länge des Brieftexts',
+      pass: words >= LETTER_MIN_WORDS && words <= LETTER_MAX_WORDS,
+      desc: words < LETTER_MIN_WORDS
+        ? 'Nur ' + words + ' Wörter. Üblich sind ' + LETTER_MIN_WORDS + ' bis ' + LETTER_MAX_WORDS + ': genug, um zwei, drei Belege aus Ihrer Erfahrung zu nennen.'
+        : words > LETTER_MAX_WORDS
+          ? words + ' Wörter. Üblich sind ' + LETTER_MIN_WORDS + ' bis ' + LETTER_MAX_WORDS + '; längere Briefe werden oft nur überflogen. Kürzen Sie auf das, was für diese Stelle zählt.'
+          : words + ' Wörter, im üblichen Rahmen von ' + LETTER_MIN_WORDS + ' bis ' + LETTER_MAX_WORDS + '.'
+    });
+
+    if (!english) {
+      // Floskeln
+      var phraseHits = [];
+      LETTER_PHRASES.forEach(function (p) {
+        p.re.lastIndex = 0;
+        var m;
+        while ((m = p.re.exec(body))) {
+          res.marks.push({ start: m.index, end: m.index + m[0].length, cls: 'warn', label: 'Floskel' });
+          if (phraseHits.indexOf(p.label) < 0) phraseHits.push(p.label);
+        }
+      });
+      res.style.push({
+        title: 'Keine Standardfloskeln',
+        pass: phraseHits.length === 0,
+        desc: phraseHits.length
+          ? 'Gefunden: ' + phraseHits.map(letterQuote).join(', ') + '. Solche Sätze stehen in fast jedem Anschreiben. Ein konkreter Einstieg, etwa warum diese Stelle oder dieses Unternehmen, wirkt stärker.'
+          : 'Keine der üblichen Standardformulierungen gefunden.'
+      });
+
+      // Konjunktiv
+      var subj = [], ms;
+      LETTER_SUBJUNCTIVE.lastIndex = 0;
+      while ((ms = LETTER_SUBJUNCTIVE.exec(body))) {
+        var s0 = ms.index + ms[1].length, s1 = s0 + ms[2].length;
+        res.marks.push({ start: s0, end: s1, cls: 'warn', label: 'Konjunktiv' });
+        var sent = sentences.filter(function (x) { return x.start <= s0 && x.end >= s1; })[0];
+        subj.push(letterQuote(ms[2]) + (sent ? ' in ' + letterQuote(letterSnippet(sent.text, 70)) : ''));
+      }
+      res.style.push({
+        title: 'Klar statt Konjunktiv',
+        pass: subj.length === 0,
+        desc: subj.length
+          ? subj.length + '× Konjunktiv: ' + subj.slice(0, 4).join('; ') + (subj.length > 4 ? '; …' : '') + '. Direkt formuliert wirkt es sicherer: „Ich freue mich auf ein Gespräch“ statt „Ich würde mich freuen“.'
+          : 'Kein „würde“, „könnte“, „möchte“ oder ähnliches gefunden.'
+      });
+    } else {
+      res.styleLangSkipped = true;
+    }
+
+    // Satzanfänge mit "Ich" / "I"
+    var ichRe = english ? /^I(?:['’](?:m|ve|d|ll))?(?![A-Za-z])/ : /^Ich(?![A-Za-zÄÖÜäöüß])/;
+    var ichCount = 0, firstIch = false;
+    sentences.forEach(function (s, i) {
+      var lead = s.text.match(/^[\s„"“'‚(•*–—-]*/)[0].length;
+      var mm = s.text.slice(lead).match(ichRe);
+      if (mm) {
+        ichCount++;
+        if (i === 0) firstIch = true;
+        res.marks.push({ start: s.start + lead, end: s.start + lead + mm[0].length, cls: 'info', label: english ? '„I“ am Satzanfang' : '„Ich“ am Satzanfang' });
+      }
+    });
+    var ichWord = english ? '„I“' : '„Ich“';
+    res.style.push({
+      title: 'Abwechslungsreiche Satzanfänge',
+      pass: ichCount * 3 <= sentences.length && !firstIch,
+      desc: ichCount + ' von ' + sentences.length + ' Sätzen beginnen mit ' + ichWord + '.' + (firstIch ? ' Schon der erste Satz beginnt damit.' : '') +
+        (ichCount * 3 <= sentences.length && !firstIch ? '' : ' Faustregel: höchstens jeder dritte Satz, der erste gar nicht. Beginnen Sie mit dem Thema, etwa ' +
+          (english ? '„With five years in purchasing, I …“.' : '„Seit fünf Jahren verantworte ich …“.'))
+    });
+
+    // Lange Sätze
+    var longOnes = sentences.filter(function (s) { return letterWordCount(s.text) >= LETTER_LONG_SENTENCE; });
+    res.style.push({
+      title: 'Lesbare Satzlänge',
+      pass: longOnes.length === 0,
+      desc: longOnes.length
+        ? longOnes.length + (longOnes.length === 1 ? ' Satz hat ' : ' Sätze haben ') + LETTER_LONG_SENTENCE + ' Wörter oder mehr: ' +
+          longOnes.slice(0, 3).map(function (s) { return letterQuote(letterSnippet(s.text, 60)) + ' (' + letterWordCount(s.text) + ' Wörter)'; }).join('; ') + (longOnes.length > 3 ? '; …' : '') +
+          '. Teilen Sie lange Sätze; Personaler überfliegen.'
+        : 'Kein Satz hat ' + LETTER_LONG_SENTENCE + ' Wörter oder mehr.'
+    });
+
+    if (!english) {
+      // Eigenschaften ohne Beleg
+      var traits = [], mt;
+      LETTER_TRAITS.lastIndex = 0;
+      while ((mt = LETTER_TRAITS.exec(body))) {
+        var t0 = mt.index + mt[1].length;
+        res.marks.push({ start: t0, end: t0 + mt[2].length, cls: 'warn', label: 'Eigenschaft ohne Beleg' });
+        traits.push(mt[2]);
+      }
+      res.style.push({
+        title: 'Belegen statt behaupten',
+        pass: traits.length <= LETTER_MAX_TRAITS,
+        desc: traits.length > LETTER_MAX_TRAITS
+          ? traits.length + ' Eigenschaftswörter: ' + traits.map(letterQuote).join(', ') + '. Solche Behauptungen stehen in fast jedem Anschreiben. Ein kurzes Beispiel aus dem Berufsalltag wirkt stärker als die Eigenschaft selbst.'
+          : traits.length
+            ? traits.length + ' Eigenschaftswort' + (traits.length === 1 ? '' : 'e') + ' wie ' + traits.map(letterQuote).join(', ') + '; bis ' + LETTER_MAX_TRAITS + ' sind unauffällig.'
+            : 'Keine Selbstzuschreibungen wie „teamfähig“ oder „belastbar“ ohne Beleg.'
+      });
+    }
+
+    // Bezug zum Unternehmen
+    var company = letterCompanyName(letter.recipient);
+    if (!company) {
+      res.style.push({ title: 'Bezug zum Unternehmen', pass: false, desc: 'Kein Empfänger eingetragen. Ohne Firmennamen fehlt auch der Bezug zum Unternehmen.' });
+    } else {
+      var low = body.toLowerCase();
+      var firstWord = company.split(' ')[0];
+      var hit = low.indexOf(company.toLowerCase()) >= 0 || (firstWord.length >= 4 && low.indexOf(firstWord.toLowerCase()) >= 0);
+      res.style.push({
+        title: 'Bezug zum Unternehmen',
+        pass: hit,
+        desc: hit
+          ? letterQuote(company) + ' kommt im Brieftext vor.'
+          : letterQuote(company) + ' (aus dem Empfänger) kommt im Brieftext nicht vor. Ein Satz, warum gerade dieses Unternehmen, zeigt, dass der Brief nicht für alle gleich ist.'
+      });
+    }
+  }
+
+  // Was die Anzeige verlangt
+  if (res.hasPosting) {
+    var req = postingRequests(postingText);
+    var subject = asText(letter.subject);
+    var title = res.jobTitle = postingJobTitle(postingText);
+    if (title) {
+      var tOk = !!subject.trim() && letterNormTitle(subject).indexOf(letterNormTitle(title)) >= 0;
+      res.requests.push({
+        title: 'Stellentitel im Betreff',
+        pass: tOk,
+        desc: tOk
+          ? 'Der Betreff enthält ' + letterQuote(title) + '.'
+          : (subject.trim() ? 'Der Betreff enthält den Stellentitel der Anzeige nicht. ' : 'Kein Betreff eingetragen. ') +
+            'Erkannt: ' + letterQuote(title) + '. Personalabteilungen ordnen Bewerbungen oft über den Titel zu.'
+      });
+    }
+    if (req.salary) {
+      var sOk = /\d[\d.\s]*\s*(?:€|eur\b|euro|k\b|tsd\.?|tausend)|brutto|jahresgehalt|gehaltsvorstellung|gehaltswunsch|zieleinkommen|salary|per annum|p\.\s?a\./i.test(body);
+      res.requests.push({
+        title: 'Gehaltsvorstellung',
+        pass: sOk,
+        desc: sOk ? 'Die Anzeige bittet darum; der Brief enthält eine Angabe.'
+          : 'Die Anzeige bittet um Ihre Gehaltsvorstellung; im Brieftext steht keine. Üblich ist ein Jahresbruttogehalt, etwa „Meine Gehaltsvorstellung liegt bei 65.000 € brutto im Jahr.“' +
+            ' <button type="button" class="ats-copy-btn letter-apply-btn" onclick="insertLetterSentence(\'salary\')">Satz einfügen</button>'
+      });
+    }
+    if (req.start) {
+      var eOk = /eintritt|verfügbar|kündigungsfrist|ab sofort|starttermin|zum\s+\d{1,2}\.|ab\s+(?:dem\s+)?\d{1,2}\.|(?:januar|februar|märz|april|mai|juni|juli|august|september|oktober|november|dezember)\s+\d{4}|\b\d{1,2}\/\d{4}|notice period|available|start date|immediately/i.test(body);
+      res.requests.push({
+        title: 'Eintrittstermin',
+        pass: eOk,
+        desc: eOk ? 'Die Anzeige fragt danach; der Brief enthält eine Angabe.'
+          : 'Die Anzeige fragt nach dem frühesten Eintrittstermin oder der Kündigungsfrist; im Brieftext steht dazu nichts. Zum Beispiel: „Mein frühester Eintrittstermin ist der 1. März.“' +
+            ' <button type="button" class="ats-copy-btn letter-apply-btn" onclick="insertLetterSentence(\'start\')">Satz einfügen</button>'
+      });
+    }
+    if (req.code) {
+      var norm = function (s) { return asText(s).toLowerCase().replace(/\s+/g, ''); };
+      var cOk = norm(subject).indexOf(norm(req.code)) >= 0;
+      res.requests.push({
+        title: 'Kennziffer im Betreff',
+        pass: cOk,
+        desc: cOk ? letterQuote(req.code) + ' steht im Betreff.'
+          : 'Die Anzeige nennt die Kennziffer ' + letterQuote(req.code) + '; sie fehlt im Betreff.' + (norm(body).indexOf(norm(req.code)) >= 0 ? ' Im Brieftext steht sie, gesucht wird sie aber im Betreff.' : '')
+      });
+    }
+    if (req.contact) {
+      var c = req.contact;
+      var suggestion = postingContactSalutation(c, english);
+      var cur = asText(letter.salutation);
+      var aOk = cur.toLowerCase().indexOf(c.last.toLowerCase()) >= 0;
+      var who = (english ? (c.female ? 'Ms ' : 'Mr ') : (c.female ? 'Frau ' : 'Herr ')) + (c.titles ? c.titles + ' ' : '') + c.last;
+      lastLetterSalutation = aOk ? '' : suggestion;
+      res.requests.push({
+        title: 'Persönliche Anrede',
+        pass: aOk,
+        desc: aOk ? 'Die Anrede nennt ' + esc(who) + ' aus der Anzeige.'
+          : 'Die Anzeige nennt ' + esc(who) + ' als Kontakt. Vorschlag: ' + letterQuote(suggestion) +
+            ' <button type="button" class="ats-copy-btn letter-apply-btn" onclick="applyPostingSalutation()">Anrede übernehmen</button>'
+      });
+    } else {
+      lastLetterSalutation = '';
+    }
+    if (req.docs.length) {
+      var encl = asText(letter.enclosures);
+      var miss = req.docs.filter(function (d) { return !d.encl.test(encl); });
+      res.requests.push({
+        title: 'Verlangte Unterlagen',
+        pass: miss.length === 0,
+        desc: 'Die Anzeige verlangt: ' + req.docs.map(function (d) { return d.label; }).join(', ') + '. ' +
+          (miss.length ? 'Unter „Anlagen“ fehlen: ' + miss.map(function (d) { return d.label; }).join(', ') + '.' : 'Alles steht unter „Anlagen“.')
+      });
+    }
+  } else {
+    lastLetterSalutation = '';
+  }
+
+  // Formales: festes Datum, Platzhalter
+  var age = docDateAgeDays(fixedDate, now);
+  if (age !== null) {
+    var fixedStr = formatDocDate(parseIsoDate(fixedDate), 'de');
+    res.formal.push({
+      title: 'Datum des Briefs',
+      pass: age < DOC_DATE_STALE_DAYS,
+      desc: age >= DOC_DATE_STALE_DAYS
+        ? 'Das festgelegte Datum ' + fixedStr + ' liegt ' + age + ' Tage zurück. Für eine neue Bewerbung unter „Persönliche Daten“ beim Datum „Heute“ wählen.'
+        : 'Festes Datum ' + fixedStr + (age > 0 ? ', vor ' + age + (age === 1 ? ' Tag' : ' Tagen') : age === 0 ? ', heute' : ', in der Zukunft') + '.'
+    });
+  }
+  var placeholders = letterPlaceholders(letter);
+  if (placeholders.length) {
+    res.formal.push({ title: 'Platzhalter ausgefüllt', pass: false, desc: 'Im Brief steht noch ' + placeholders.map(letterQuote).join(', ') + '. Vor dem Versand durch die echte Angabe ersetzen.' });
+    var mp;
+    LETTER_PLACEHOLDER.lastIndex = 0;
+    while ((mp = LETTER_PLACEHOLDER.exec(body))) res.marks.push({ start: mp.index, end: mp.index + mp[0].length, cls: 'warn', label: 'Platzhalter' });
+  }
+  return res;
+}
+
+function letterMarkedHtml(text, marks) {
+  var list = marks.slice().sort(function (a, b) { return a.start - b.start || b.end - a.end; });
+  var out = '', pos = 0;
+  list.forEach(function (mk) {
+    if (mk.start < pos) return;
+    out += esc(text.slice(pos, mk.start)) + '<mark class="letter-mark ' + mk.cls + '" title="' + escAttr(mk.label) + '">' + esc(text.slice(mk.start, mk.end)) + '</mark>';
+    pos = mk.end;
+  });
+  return out + esc(text.slice(pos));
+}
+
+function atsChecksHtml(items) {
+  return items.map(function (c) {
+    return '<div class="ats-check-item">' +
+      (c.pass
+        ? '<span class="ats-icon-pill pass" aria-label="Erfüllt"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg></span>'
+        : '<span class="ats-icon-pill warn" aria-label="Hinweis"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></span>') +
+      '<div><div class="ats-check-title">' + c.title + '</div><div class="ats-check-desc">' + c.desc + '</div></div></div>';
+  }).join('');
+}
+
+function renderLetterCheck() {
+  var box = document.getElementById('letter-check-result');
+  if (!box) return;
+  var pill = document.getElementById('letter-score-num');
+  var badge = document.getElementById('ats-letter-badge');
+  var res = analyzeLetter(cvData.letter, cvData.posting && cvData.posting.text, cvData.signatureDate);
+  var all = res.style.concat(res.requests, res.formal);
+  var passed = all.filter(function (c) { return c.pass; }).length;
+  if (pill) pill.textContent = all.length ? passed + '/' + all.length : '–';
+  if (badge) {
+    badge.style.display = all.length ? '' : 'none';
+    if (all.length) {
+      var ok = passed === all.length;
+      badge.className = 'ats-badge ' + (ok ? 'success' : 'warning');
+      badge.innerHTML = '<div class="ats-badge-icon">' + (ok
+        ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><polyline points="20 6 9 17 4 12"/></svg>'
+        : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>') +
+        '</div><div class="ats-badge-content"><div class="ats-badge-title">Anschreiben: ' + passed + ' von ' + all.length + ' Hinweisen erfüllt (' + Math.round(passed / all.length * 100) + ' %)</div>' +
+        '<div class="ats-badge-text">' + (ok ? 'Keine Auffälligkeiten nach diesen Faustregeln.' : 'Faustregeln, keine Pflicht: Entscheiden Sie selbst, was für diese Bewerbung passt.') + '</div></div>';
+    }
+  }
+  var html = '';
+  html += '<div><div class="ats-section-label">Stil</div>';
+  if (!res.hasBody) html += '<div class="posting-hint">Noch kein Brieftext. Den Text schreiben Sie im Editor unter „Anschreiben“.</div>';
+  else {
+    html += '<div class="ats-checks">' + atsChecksHtml(res.style) + '</div>';
+    if (res.styleLangSkipped) html += '<div class="posting-hint letter-note">Floskeln, Konjunktiv und Eigenschaftswörter prüft der Check nur in deutschen Briefen; dieser Brief wurde als englisch erkannt.</div>';
+  }
+  html += '</div><div><div class="ats-section-label">Was die Anzeige verlangt</div>';
+  if (!res.hasPosting) html += '<div class="posting-hint">Fügen Sie im Reiter „Stellenanzeige“ eine Anzeige ein. Dann prüft dieser Reiter auch Stellentitel, Gehaltsvorstellung, Eintrittstermin, Kennziffer, Ansprechpartner und verlangte Unterlagen.</div>';
+  else if (!res.requests.length) html += '<div class="posting-hint">In der Anzeige wurde weder ein Stellentitel noch eine Bitte um Gehaltsvorstellung, Eintrittstermin, Kennziffer, Ansprechpartner oder bestimmte Unterlagen erkannt.</div>';
+  else html += '<div class="ats-checks">' + atsChecksHtml(res.requests) + '</div>';
+  html += '</div>';
+  if (res.formal.length) html += '<div><div class="ats-section-label">Formales</div><div class="ats-checks">' + atsChecksHtml(res.formal) + '</div></div>';
+  if (res.hasBody) {
+    html += '<div class="posting-group"><div class="posting-group-label">Brieftext mit Markierungen</div>' +
+      '<div class="letter-legend"><mark class="letter-mark warn">Floskel, Konjunktiv, Eigenschaft, Platzhalter</mark><mark class="letter-mark info">' + (res.english ? '„I“' : '„Ich“') + ' am Satzanfang</mark></div>' +
+      '<div class="posting-marked">' + letterMarkedHtml(res.body, res.marks) + '</div></div>';
+  }
+  html += '<div class="posting-hint">Geprüft wird der Brief aus dem Editor. Die Regeln sind Faustregeln ohne KI und verstehen keine Bedeutungen. Die Zahl am Reiter zählt nicht zum ATS-Score.</div>';
+  box.innerHTML = html;
+}
+
+function applyPostingSalutation() {
+  if (!lastLetterSalutation) return;
+  cvData.letter.salutation = lastLetterSalutation;
+  renderEditor();
+  renderPreview();
+  saveToLocalStorage();
+  renderLetterCheck();
 }
 
 function closeAtsModal() {
@@ -1289,7 +2326,10 @@ var helpers = {
   periodMonths: periodMonths,
   totalMonths: totalMonths,
   durationHtml: durationHtml,
-  showDurationAt: showDurationAt
+  showDurationAt: showDurationAt,
+  displayName: displayName,
+  contactItems: contactItems,
+  letterSender: letterSender
 };
 
 // ═══════════════════════════════════════
@@ -1314,7 +2354,7 @@ function getLayouts() { return window.CV_LAYOUTS || {}; }
 
 function setLayout(key) {
   currentLayout = key;
-  document.querySelectorAll('[data-lay]').forEach(function(b) { b.classList.toggle('on', b.dataset.lay===key); });
+  syncLayoutSelect();
   applyLayoutCSS(); renderPreviewImmediate();
 }
 
@@ -1354,30 +2394,131 @@ function applyLayoutCSS() {
   document.getElementById('cv-layout-style').textContent = css + '\n' + overrides;
 }
 
+// Layout-Auswahl als Menü mit Kurzbeschreibung. Sechs Knöpfe passten neben
+// „Dokument“ und „Gruppierung“ nicht mehr in eine Zeile.
 function buildLayoutButtons() {
-  var container = document.getElementById('layout-btns');
+  var menu = document.getElementById('lay-select-menu');
+  if (!menu) return;
   var layouts = getLayouts(); var html = '';
   for (var key in layouts) {
     if (!layouts.hasOwnProperty(key)) continue;
     var l = layouts[key];
-    html += '<button class="seg-btn'+(key===currentLayout?' on':'')+'" data-lay="'+key+'" onclick="setLayout(\''+key+'\')" title="'+escAttr(l.desc)+'">';
-    html += '<span class="dot" style="background:'+l.accent+'"></span>'+esc(l.name)+'</button>';
+    html += '<div class="lay-opt" role="option" tabindex="-1" data-lay="' + escAttr(key) + '" aria-selected="false" onclick="chooseLayout(this.dataset.lay)">';
+    html += '<span class="dot" style="background:' + escAttr(l.accent) + '" aria-hidden="true"></span>';
+    html += '<span class="lay-opt__text"><span class="lay-opt__name">' + esc(l.name) + '</span>';
+    if (l.desc) html += '<span class="lay-opt__desc">' + esc(l.desc) + '</span>';
+    html += '</span><span class="lay-opt__check" aria-hidden="true">✓</span></div>';
   }
-  container.innerHTML = html;
+  menu.innerHTML = html;
+  syncLayoutSelect();
 }
 
-function syncModeButtons() {
-  document.querySelectorAll('[data-lay]').forEach(function(b) {
-    b.classList.toggle('on', b.dataset.lay === currentLayout);
+function syncLayoutSelect() {
+  var btn = document.getElementById('lay-select-btn');
+  var l = getLayouts()[currentLayout];
+  if (btn && l) {
+    btn.innerHTML = '<span class="dot" style="background:' + escAttr(l.accent) + '" aria-hidden="true"></span><span class="lay-select__name">' + esc(l.name) + '</span>' +
+      '<svg class="lay-select__chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>';
+    btn.title = l.desc || '';
+  }
+  document.querySelectorAll('.lay-opt').forEach(function (o) {
+    o.setAttribute('aria-selected', o.dataset.lay === currentLayout ? 'true' : 'false');
   });
+}
+
+function layoutMenuOpen() {
+  var menu = document.getElementById('lay-select-menu');
+  return !!menu && !menu.hidden;
+}
+
+function openLayoutMenu() {
+  var menu = document.getElementById('lay-select-menu');
+  var btn = document.getElementById('lay-select-btn');
+  if (!menu || !btn) return;
+  menu.hidden = false;
+  btn.setAttribute('aria-expanded', 'true');
+  var sel = menu.querySelector('.lay-opt[aria-selected="true"]') || menu.querySelector('.lay-opt');
+  if (sel) sel.focus();
+}
+
+function closeLayoutMenu(returnFocus) {
+  var menu = document.getElementById('lay-select-menu');
+  var btn = document.getElementById('lay-select-btn');
+  if (!menu || menu.hidden) return;
+  menu.hidden = true;
+  if (btn) {
+    btn.setAttribute('aria-expanded', 'false');
+    if (returnFocus) btn.focus();
+  }
+}
+
+function toggleLayoutMenu() {
+  if (layoutMenuOpen()) closeLayoutMenu(true);
+  else openLayoutMenu();
+}
+
+function chooseLayout(key) {
+  closeLayoutMenu(true);
+  if (key !== currentLayout && getLayouts()[key]) setLayout(key);
+}
+
+function layoutButtonKey(e) {
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); openLayoutMenu(); }
+}
+
+function layoutMenuKey(e) {
+  var opts = Array.prototype.slice.call(document.querySelectorAll('.lay-opt'));
+  if (!opts.length) return;
+  var i = opts.indexOf(document.activeElement);
+  if (e.key === 'ArrowDown') { e.preventDefault(); opts[Math.min(opts.length - 1, i + 1)].focus(); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); opts[Math.max(0, i - 1)].focus(); }
+  else if (e.key === 'Home') { e.preventDefault(); opts[0].focus(); }
+  else if (e.key === 'End') { e.preventDefault(); opts[opts.length - 1].focus(); }
+  else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (i >= 0) chooseLayout(opts[i].dataset.lay); }
+  else if (e.key === 'Escape') { e.preventDefault(); closeLayoutMenu(true); }
+  else if (e.key === 'Tab') closeLayoutMenu(false);
+}
+
+// Klick außerhalb schließt das Menü
+document.addEventListener('mousedown', function (e) {
+  var box = document.getElementById('lay-select');
+  if (box && layoutMenuOpen() && !box.contains(e.target)) closeLayoutMenu(false);
+});
+
+function syncModeButtons() {
+  syncLayoutSelect();
   document.querySelectorAll('[data-grp]').forEach(function(b) {
     b.classList.toggle('on', b.dataset.grp === grouping);
   });
+  document.querySelectorAll('[data-doc]').forEach(function(b) {
+    b.classList.toggle('on', b.dataset.doc === currentDoc);
+  });
+  var grpGroup = document.getElementById('grp-group');
+  if (grpGroup) grpGroup.hidden = currentDoc === 'letter';
 }
 
 // ═══════════════════════════════════════
 // GROUPING / PHOTOS / DATA OPS
 // ═══════════════════════════════════════
+// Vorschau und PDF zeigen den Lebenslauf, das Anschreiben oder beides
+// (erst das Anschreiben, dann den Lebenslauf).
+// Ansichtseinstellung wie der geöffnete Editor-Abschnitt, nicht Teil der Daten.
+var currentDoc = 'cv';
+try {
+  var savedDoc = localStorage.getItem('cv_current_doc');
+  if (savedDoc === 'letter' || savedDoc === 'both') currentDoc = savedDoc;
+} catch (e) {}
+var CV_EDITOR_SECTIONS = ['experience', 'education', 'skills', 'certificates', 'projects'];
+
+function setDocument(doc) {
+  doc = (doc === 'letter' || doc === 'both') ? doc : 'cv';
+  if (doc === currentDoc) return;
+  currentDoc = doc;
+  try { localStorage.setItem('cv_current_doc', doc); } catch (e) {}
+  syncModeButtons();
+  renderPreviewImmediate();
+}
+
 function setGrouping(g) {
   grouping = g;
   document.querySelectorAll('[data-grp]').forEach(function(b) { b.classList.toggle('on', b.dataset.grp===g); });
@@ -1408,6 +2549,12 @@ function toggleFocusedSection(sec) {
     focusedSection = sec;
   }
   try { localStorage.setItem('cv_focused_section', focusedSection || ''); } catch(e){}
+  // Beim Öffnen springt die Vorschau auf das passende Dokument. In „Beides“ sind
+  // schon beide zu sehen; dann bleibt die Ansicht.
+  if (currentDoc !== 'both') {
+    if (focusedSection === 'letter') setDocument('letter');
+    else if (CV_EDITOR_SECTIONS.indexOf(focusedSection) >= 0) setDocument('cv');
+  }
   renderEditor();
 }
 
@@ -1417,6 +2564,28 @@ function toggleEduEdit(id) { editingEdu=editingEdu===id?null:id; renderEditor();
 function updatePersonal(f,v) { cvData.personal[f]=v; renderPreview(); }
 function updateSkill(f,v) { cvData.skills[f]=v; renderPreview(); }
 function updateSigLoc(v) { cvData.signatureLocation=v; renderPreview(); }
+function updateSigDate(v) {
+  cvData.signatureDate = parseIsoDate(v) ? v : '';
+  var hint = document.getElementById('sig-date-hint');
+  if (hint) hint.innerHTML = sigDateHintHtml();
+  var today = document.getElementById('sig-date-today');
+  if (today) today.style.display = cvData.signatureDate ? '' : 'none';
+  renderPreview();
+}
+function resetSigDate() {
+  var input = document.getElementById('sig-date');
+  if (input) input.value = '';
+  updateSigDate('');
+}
+function sigDateHintHtml() {
+  var age = docDateAgeDays(cvData.signatureDate);
+  if (age === null) return 'Leer lassen für das heutige Datum. Gilt für das Anschreiben und die Datumszeile unter dem Lebenslauf.';
+  if (age >= DOC_DATE_STALE_DAYS) return '<span class="sig-date-warn">Festes Datum, liegt ' + age + ' Tage zurück. Für eine neue Bewerbung „Heute“ wählen.</span>';
+  if (age > 0) return 'Festes Datum, liegt ' + age + (age === 1 ? ' Tag' : ' Tage') + ' zurück.';
+  if (age === 0) return 'Festes Datum: heute.';
+  return 'Festes Datum, liegt ' + (-age) + (age === -1 ? ' Tag' : ' Tage') + ' in der Zukunft.';
+}
+function updateLetter(f,v) { if (LETTER_FIELDS.indexOf(f) >= 0) { cvData.letter[f]=v; renderPreview(); } }
 function updateAccentColor(v) { customStyle.accentColor=v; applyLayoutCSS(); renderPreviewImmediate(); }
 function resetAccentColor() { customStyle.accentColor=''; applyLayoutCSS(); renderPreviewImmediate(); renderEditor(); }
 function updateFontFamily(v) { customStyle.fontFamily=v; applyLayoutCSS(); renderPreviewImmediate(); }
@@ -1431,6 +2600,40 @@ function addExperience() {
   cvData.experience.unshift({id:id, company:'Firma', entity:'', role:'Position', period:'MM/YYYY - MM/YYYY', tasks:['Aufgabe']});
   editingExp=id; focusedSection='experience'; renderAll();
 }
+// Ausblenden statt löschen: Der Eintrag bleibt im Editor, fehlt aber in
+// Vorschau, PDF und ATS-Check (auch in der Lückenprüfung).
+function visibleCvData(data) {
+  var copy = {};
+  for (var k in data) if (Object.prototype.hasOwnProperty.call(data, k)) copy[k] = data[k];
+  HIDEABLE_SECTIONS.forEach(function (s) {
+    if (Array.isArray(data[s])) copy[s] = data[s].filter(function (e) { return !(e && e.hidden); });
+  });
+  return copy;
+}
+
+function toggleEntryHidden(section, id) {
+  if (HIDEABLE_SECTIONS.indexOf(section) < 0 || !Array.isArray(cvData[section])) return;
+  cvData[section].forEach(function (e) {
+    if (e && String(e.id) === String(id)) { if (e.hidden) delete e.hidden; else e.hidden = true; }
+  });
+  renderEditor();
+  renderPreviewImmediate();
+}
+
+function hiddenSuffix(list) {
+  var n = (list || []).filter(function (e) { return e && e.hidden; }).length;
+  return n ? ', ' + n + ' ausgeblendet' : '';
+}
+
+function hideToggleHtml(section, entry) {
+  var hidden = !!entry.hidden;
+  var eye = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    (hidden ? '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>'
+            : '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>') + '</svg>';
+  return '<button type="button" class="hide-toggle' + (hidden ? ' on' : '') + '" aria-pressed="' + hidden + '" title="' + (hidden ? 'Im Lebenslauf wieder zeigen' : 'Im Lebenslauf ausblenden, ohne zu löschen') + '"' +
+    ' onclick="event.stopPropagation(); toggleEntryHidden(\'' + section + '\', \'' + escAttr(String(entry.id)) + '\')">' + eye + (hidden ? '<span>ausgeblendet</span>' : '<span class="sr-only">Ausblenden</span>') + '</button>';
+}
+
 function removeExperience(id) { cvData.experience=cvData.experience.filter(function(e){return e.id!==id;}); editingExp=null; renderAll(); }
 function moveExp(id,dir) {
   var i=cvData.experience.findIndex(function(e){return e.id===id;});
@@ -1559,6 +2762,7 @@ function exportJSON() {
   var blob=new Blob([JSON.stringify(exportData,null,2)],{type:'application/json'});
   var a=document.createElement('a'); a.href=URL.createObjectURL(blob);
   a.download=name+'-CV-Export.json'; a.click();
+  markBackup();
 }
 function importJSON(ev) {
   var file=ev.target.files[0]; if(!file)return;
@@ -1594,6 +2798,7 @@ function importJSON(ev) {
         cvData=normalizeCVData(d);
         renderAll();
         syncModeButtons();
+        markBackup();
       } else alert('Ungültiges Format.');
     } catch(err) { alert('Ungültige JSON-Datei.'); }
   };
@@ -1608,12 +2813,14 @@ function exportPDF() {
   var parts = (cvData.personal.name || defaultDocName).split(/[,\s]+/).filter(function(s){return s;});
   // Name is "Nachname, Vorname" format - flip to "Vorname_Nachname"
   var nameStr = parts.length >= 2 ? parts[1]+'_'+parts[0] : parts.join('_');
-  var d = new Date();
+  var d = docDate(); // festes Datum, sonst heute: die Datei heißt wie das Dokument
   var dd = String(d.getDate()).padStart(2,'0');
   var mm = String(d.getMonth()+1).padStart(2,'0');
   var yy = String(d.getFullYear()).slice(-2);
   var oldTitle = document.title;
-  var docSuffix = (outputLang === 'en') ? 'CV' : 'Lebenslauf';
+  var docSuffix = currentDoc === 'both' ? ((outputLang === 'en') ? 'Application' : 'Bewerbung')
+    : currentDoc === 'letter' ? ((outputLang === 'en') ? 'Cover-Letter' : 'Anschreiben')
+    : ((outputLang === 'en') ? 'CV' : 'Lebenslauf');
   document.title = nameStr + '-' + docSuffix + '_' + dd + '-' + mm + '-' + yy;
   window.print();
   setTimeout(function(){ document.title = oldTitle; }, 1000);
@@ -1635,27 +2842,62 @@ if (document.fonts && document.fonts.addEventListener) {
   document.fonts.addEventListener('loadingdone', renderPreview);
 }
 
+// Jeder Durchlauf bekommt eine Nummer. Ein älterer Durchlauf, der noch auf
+// Bilder wartet, bricht ab, sobald ein neuerer begonnen hat.
+var renderRun = 0;
+
 function renderPreviewImmediate() {
   var layout = getLayouts()[currentLayout];
   if (!layout) return;
+  var run = ++renderRun;
 
-  // Step 1: Render content into hidden measurement div
+  // „Beides“: erst das Anschreiben, dann der Lebenslauf. Jedes Dokument wird für
+  // sich gemessen und umbrochen; Seitenzahlen und Längenhinweise gelten je Dokument.
+  var docs = currentDoc === 'both' ? ['letter', 'cv'] : [currentDoc];
+  var docIndex = 0;
+  var docKind = docs[0];
+  var pagesHTML = '';
   var measure = document.getElementById('cv-measure');
-  measure.innerHTML = layout.render(cvData, grouping, helpers);
 
-  // Step 2: Wait for images to load, then paginate
-  var images = measure.querySelectorAll('img');
-  var loaded = 0;
-  var total = images.length;
+  function nextDocument() {
+    if (run !== renderRun) return;
+    if (docIndex >= docs.length) {
+      document.getElementById('pv-panel').innerHTML = pagesHTML;
+      saveToLocalStorage();
+      return;
+    }
+    docKind = docs[docIndex++];
+
+    // Step 1: Render content into hidden measurement div
+    measure.innerHTML = docKind === 'letter' ? renderLetter(cvData, layout) : layout.render(visibleCvData(cvData), grouping, helpers);
+
+    // Step 2: Wait for images to load, then paginate
+    var images = measure.querySelectorAll('img');
+    var loaded = 0;
+    var total = images.length;
+    if (total === 0) { doPaginate(); return; }
+    var check = function() {
+      loaded++;
+      if (loaded >= total) doPaginate();
+    };
+    for (var i = 0; i < total; i++) {
+      if (images[i].complete) { check(); }
+      else {
+        images[i].onload = check;
+        images[i].onerror = check;
+      }
+    }
+  }
 
   function doPaginate() {
+    if (run !== renderRun) return;
     var pageH = getPageHeightPx();
     var topPad = Math.round(pageH * 0.042); // ~12.5mm breathing room on pages 2+ (~47px)
     var botPad = Math.round(pageH * 0.03);  // ~9mm reserved for page number (~34px)
     var usablePageH = pageH - topPad - botPad;
 
     // Step 2b: Avoid splitting entries across pages (including list items)
-    var selectors = '.cv-entry, .cv-sub, .cv-edu, .cv-entry-ul li, .cv-sub-ul li';
+    var selectors = '.cv-entry, .cv-sub, .cv-edu, .cv-entry-ul li, .cv-sub-ul li, .cv-letter-p, .cv-letter-end';
 
     // A section starts at .cv-sh and ends immediately before the next
     // section heading (or the signature block). This convention is shared
@@ -2000,17 +3242,25 @@ function renderPreviewImmediate() {
     var numPages = Math.max(1, Math.ceil(Math.max(1, totalH - 2) / pageH));
 
     // Step 3: Build page divs
-    var panel = document.getElementById('pv-panel');
     var contentHTML = measure.innerHTML;
-    var pagesHTML = '';
 
     // Add visual page count warning badge at the top of the preview panel only if it exceeds 2 pages
     var badgeHTML = '';
-    if (numPages > 2) {
+    if (numPages > (docKind === 'letter' ? 1 : 2)) {
       badgeHTML = '<div class="cv-page-warning" style="background:var(--ui-color-status-warning-soft); color:var(--ui-color-status-warning); border:1px solid var(--ui-color-status-warning); padding:12px 18px; border-radius:8px; width:100%; max-width:210mm; font-size:13px; font-weight:600; display:flex; align-items:center; gap:8px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); margin-bottom:15px; box-sizing:border-box;">' +
-                  '<span>⚠️ <strong>Achtung:</strong> Ihr Lebenslauf umfasst <strong>' + numPages + ' Seiten</strong>. Ein professioneller Lebenslauf sollte in Deutschland idealerweise maximal 2 Seiten lang sein. Bitte kürzen Sie Texte oder passen Sie die Abstände an.</span>' +
+                  (docKind === 'letter'
+                    ? '<span>⚠️ <strong>Achtung:</strong> Ihr Anschreiben umfasst <strong>' + numPages + ' Seiten</strong>. Üblich ist eine Seite. Bitte kürzen Sie den Text.</span>'
+                    : '<span>⚠️ <strong>Achtung:</strong> Ihr Lebenslauf umfasst <strong>' + numPages + ' Seiten</strong>. Ein professioneller Lebenslauf sollte in Deutschland idealerweise maximal 2 Seiten lang sein. Bitte kürzen Sie Texte oder passen Sie die Abstände an.</span>') +
                   '</div>';
       pagesHTML += badgeHTML;
+    }
+
+    if (docKind === 'letter') {
+      var placeholders = letterPlaceholders(cvData.letter);
+      if (placeholders.length) {
+        pagesHTML += '<div class="cv-page-warning pv-warning"><span>⚠️ <strong>Platzhalter:</strong> Im Anschreiben steht noch ' +
+          placeholders.map(function (p) { return '„' + esc(p) + '“'; }).join(', ') + '. Bitte vor dem Export durch die echte Angabe ersetzen.</span></div>';
+      }
     }
 
     for (var i = 0; i < numPages; i++) {
@@ -2021,30 +3271,14 @@ function renderPreviewImmediate() {
       pagesHTML += contentHTML;
       pagesHTML += '</div></div>';
       var pageNumText = (outputLang === 'en') ? ('Page ' + (i + 1) + ' of ' + numPages) : ('Seite ' + (i + 1) + ' von ' + numPages);
-      pagesHTML += '<div class="cv-page-num">' + pageNumText + '</div>';
+      if (docKind !== 'letter' || numPages > 1) pagesHTML += '<div class="cv-page-num">' + pageNumText + '</div>';
       pagesHTML += '</div>';
     }
 
-    panel.innerHTML = pagesHTML;
-    saveToLocalStorage();
+    nextDocument();
   }
 
-  if (total === 0) {
-    doPaginate();
-  } else {
-    // Wait for all images to load for accurate measurement
-    var check = function() {
-      loaded++;
-      if (loaded >= total) doPaginate();
-    };
-    for (var i = 0; i < total; i++) {
-      if (images[i].complete) { check(); }
-      else {
-        images[i].onload = check;
-        images[i].onerror = check;
-      }
-    }
-  }
+  nextDocument();
 }
 
 // ═══════════════════════════════════════
@@ -2123,6 +3357,8 @@ function renderEditor() {
     h += '          </div>';
     h += '        </div>';
     h += '        <div class="fld"><label>Ort (für Unterschrift)</label><input value="' + escAttr(cvData.signatureLocation || '') + '" oninput="updateSigLoc(this.value)" placeholder="z.B. Berlin"></div>';
+    h += '        <div class="fld"><label for="sig-date">Datum (für Unterschrift und Anschreiben)</label><div class="sig-date-row"><input type="date" id="sig-date" value="' + escAttr(cvData.signatureDate || '') + '" oninput="updateSigDate(this.value)" onchange="updateSigDate(this.value)">' +
+      '<button type="button" class="photo-btn" id="sig-date-today" onclick="resetSigDate()"' + (cvData.signatureDate ? '' : ' style="display:none"') + '>Heute</button></div><div class="fld-hint" id="sig-date-hint">' + sigDateHintHtml() + '</div></div>';
     h += '      </div>';
     h += '    </div>';
     h += '  </div>';
@@ -2162,7 +3398,7 @@ function renderEditor() {
 
   // ── Sektion 2: Berufserfahrung ──
   var isExpOpen = focusedSection === 'experience';
-  var expSummary = expTotal + ' Stationen eingetragen';
+  var expSummary = expTotal + ' Stationen eingetragen' + hiddenSuffix(cvData.experience);
   h += renderFokusHeader('experience', '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>', 'Berufserfahrung', expTotal, expSummary);
   if (isExpOpen) {
     h += '<div class="tab-pane-head" style="margin-top:2px;">';
@@ -2179,7 +3415,7 @@ function renderEditor() {
         var isEd = editingExp === exp.id;
         var cardLabel = companyDisplay(exp);
 
-        h += '<div class="ic wide-card' + (isEd ? ' ed' : '') + '" draggable="false" ondragstart="onDragStart(\'experience\',' + i + ',event)" ondragover="onDragOver(event)" ondragenter="onDragEnter(event)" ondragend="onDragEnd()" ondrop="onDrop(\'experience\',' + i + ',event)">';
+        h += '<div class="ic wide-card' + (isEd ? ' ed' : '') + '' + (exp.hidden ? ' is-hidden' : '') + '" draggable="false" ondragstart="onDragStart(\'experience\',' + i + ',event)" ondragover="onDragOver(event)" ondragenter="onDragEnter(event)" ondragend="onDragEnd()" ondrop="onDrop(\'experience\',' + i + ',event)">';
         h += '  <div class="wide-card-h" onclick="toggleExpEdit(' + exp.id + ')">';
         h += '    <div style="display:flex; align-items:center; gap:10px; flex:1; min-width:0;">';
         h += '      <span class="drag-handle" tabindex="0" onmousedown="enableDrag(event); event.stopPropagation();" onmouseup="disableDrag(event)" ontouchstart="enableDrag(event); event.stopPropagation();" ontouchend="disableDrag(event)" onkeydown="handleKeyboardReorder(\'experience\',' + i + ',event); event.stopPropagation();" onclick="event.stopPropagation();">⠿</span>';
@@ -2189,6 +3425,7 @@ function renderEditor() {
         h += '      </div>';
         h += '    </div>';
         h += '    <div style="display:flex; align-items:center; gap:8px;">';
+        h += '      ' + hideToggleHtml('experience', exp);
         h += '      <span style="font-size:11.5px; font-weight:600; color:' + (isEd ? 'var(--ui-color-accent)' : 'var(--ui-color-text-muted)') + ';">' + (isEd ? '▲ Einklappen' : '▼ Bearbeiten') + '</span>';
         h += '    </div>';
         h += '  </div>';
@@ -2224,7 +3461,7 @@ function renderEditor() {
 
   // ── Sektion 3: Ausbildung ──
   var isEduOpen = focusedSection === 'education';
-  var eduSummary = eduTotal > 0 ? (cvData.education[0].degree + ' (' + cvData.education[0].institution + ')') : 'Keine Ausbildung eingetragen';
+  var eduSummary = (eduTotal > 0 ? (cvData.education[0].degree + ' (' + cvData.education[0].institution + ')') : 'Keine Ausbildung eingetragen') + hiddenSuffix(cvData.education);
   h += renderFokusHeader('education', '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>', 'Ausbildung', eduTotal, eduSummary);
   if (isEduOpen) {
     h += '<div class="tab-pane-head" style="margin-top:2px;">';
@@ -2240,7 +3477,7 @@ function renderEditor() {
         var edu = cvData.education[j];
         var isEdE = editingEdu === edu.id;
 
-        h += '<div class="ic wide-card' + (isEdE ? ' ed' : '') + '" draggable="false" ondragstart="onDragStart(\'education\',' + j + ',event)" ondragover="onDragOver(event)" ondragenter="onDragEnter(event)" ondragend="onDragEnd()" ondrop="onDrop(\'education\',' + j + ',event)">';
+        h += '<div class="ic wide-card' + (isEdE ? ' ed' : '') + '' + (edu.hidden ? ' is-hidden' : '') + '" draggable="false" ondragstart="onDragStart(\'education\',' + j + ',event)" ondragover="onDragOver(event)" ondragenter="onDragEnter(event)" ondragend="onDragEnd()" ondrop="onDrop(\'education\',' + j + ',event)">';
         h += '  <div class="wide-card-h" onclick="toggleEduEdit(' + edu.id + ')">';
         h += '    <div style="display:flex; align-items:center; gap:10px; flex:1; min-width:0;">';
         h += '      <span class="drag-handle" tabindex="0" onmousedown="enableDrag(event); event.stopPropagation();" onmouseup="disableDrag(event)" ontouchstart="enableDrag(event); event.stopPropagation();" ontouchend="disableDrag(event)" onkeydown="handleKeyboardReorder(\'education\',' + j + ',event); event.stopPropagation();" onclick="event.stopPropagation();">⠿</span>';
@@ -2250,6 +3487,7 @@ function renderEditor() {
         h += '      </div>';
         h += '    </div>';
         h += '    <div style="display:flex; align-items:center; gap:8px;">';
+        h += '      ' + hideToggleHtml('education', edu);
         h += '      <span style="font-size:11.5px; font-weight:600; color:' + (isEdE ? 'var(--ui-color-accent)' : 'var(--ui-color-text-muted)') + ';">' + (isEdE ? '▲ Einklappen' : '▼ Bearbeiten') + '</span>';
         h += '    </div>';
         h += '  </div>';
@@ -2312,7 +3550,7 @@ function renderEditor() {
 
   // ── Sektion 5: Zertifikate & Weiterbildungen ──
   var isCertOpen = focusedSection === 'certificates';
-  var certSummary = certCount > 0 ? (certCount + ' Zertifikate eingetragen') : 'Optional';
+  var certSummary = certCount > 0 ? (certCount + ' Zertifikate eingetragen' + hiddenSuffix(cvData.certificates)) : 'Optional';
   h += renderFokusHeader('certificates', '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="7"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/></svg>', 'Zertifikate & Weiterbildungen', certCount, certSummary);
   if (isCertOpen) {
     h += '<div class="tab-pane-head" style="margin-top:2px;">';
@@ -2328,7 +3566,7 @@ function renderEditor() {
         var cert = cvData.certificates[ci];
         var isEdC = editingCert === cert.id;
 
-        h += '<div class="ic wide-card' + (isEdC ? ' ed' : '') + '" draggable="false" ondragstart="onDragStart(\'certificates\',' + ci + ',event)" ondragover="onDragOver(event)" ondragenter="onDragEnter(event)" ondragend="onDragEnd()" ondrop="onDrop(\'certificates\',' + ci + ',event)">';
+        h += '<div class="ic wide-card' + (isEdC ? ' ed' : '') + '' + (cert.hidden ? ' is-hidden' : '') + '" draggable="false" ondragstart="onDragStart(\'certificates\',' + ci + ',event)" ondragover="onDragOver(event)" ondragenter="onDragEnter(event)" ondragend="onDragEnd()" ondrop="onDrop(\'certificates\',' + ci + ',event)">';
         h += '  <div class="wide-card-h" onclick="toggleCertEdit(' + cert.id + ')">';
         h += '    <div style="display:flex; align-items:center; gap:10px; flex:1; min-width:0;">';
         h += '      <span class="drag-handle" tabindex="0" onmousedown="enableDrag(event); event.stopPropagation();" onmouseup="disableDrag(event)" ontouchstart="enableDrag(event); event.stopPropagation();" ontouchend="disableDrag(event)" onkeydown="handleKeyboardReorder(\'certificates\',' + ci + ',event); event.stopPropagation();" onclick="event.stopPropagation();">⠿</span>';
@@ -2338,6 +3576,7 @@ function renderEditor() {
         h += '      </div>';
         h += '    </div>';
         h += '    <div style="display:flex; align-items:center; gap:8px;">';
+        h += '      ' + hideToggleHtml('certificates', cert);
         h += '      <span style="font-size:11.5px; font-weight:600; color:' + (isEdC ? 'var(--ui-color-accent)' : 'var(--ui-color-text-muted)') + ';">' + (isEdC ? '▲ Einklappen' : '▼ Bearbeiten') + '</span>';
         h += '    </div>';
         h += '  </div>';
@@ -2367,7 +3606,7 @@ function renderEditor() {
 
   // ── Sektion 6: Projekte & Ehrenamt ──
   var isProjOpen = focusedSection === 'projects';
-  var projSummary = (projCount + volCount) > 0 ? (projCount + ' Projekte, ' + volCount + ' Ehrenamt') : 'Optional';
+  var projSummary = (projCount + volCount) > 0 ? (projCount + ' Projekte, ' + volCount + ' Ehrenamt' + hiddenSuffix((cvData.projects || []).concat(cvData.volunteer || []))) : 'Optional';
   h += renderFokusHeader('projects', '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>', 'Projekte & Ehrenamt', (projCount + volCount), projSummary);
   if (isProjOpen) {
     h += '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">';
@@ -2380,7 +3619,7 @@ function renderEditor() {
         var proj = cvData.projects[pi];
         var isEdP = editingProj === proj.id;
 
-        h += '<div class="ic wide-card' + (isEdP ? ' ed' : '') + '" draggable="false" ondragstart="onDragStart(\'projects\',' + pi + ',event)" ondragover="onDragOver(event)" ondragenter="onDragEnter(event)" ondragend="onDragEnd()" ondrop="onDrop(\'projects\',' + pi + ',event)">';
+        h += '<div class="ic wide-card' + (isEdP ? ' ed' : '') + '' + (proj.hidden ? ' is-hidden' : '') + '" draggable="false" ondragstart="onDragStart(\'projects\',' + pi + ',event)" ondragover="onDragOver(event)" ondragenter="onDragEnter(event)" ondragend="onDragEnd()" ondrop="onDrop(\'projects\',' + pi + ',event)">';
         h += '  <div class="wide-card-h" onclick="toggleProjEdit(' + proj.id + ')">';
         h += '    <div style="display:flex; align-items:center; gap:10px; flex:1; min-width:0;">';
         h += '      <span class="drag-handle" tabindex="0" onmousedown="enableDrag(event); event.stopPropagation();" onmouseup="disableDrag(event)" ontouchstart="enableDrag(event); event.stopPropagation();" ontouchend="disableDrag(event)" onkeydown="handleKeyboardReorder(\'projects\',' + pi + ',event); event.stopPropagation();" onclick="event.stopPropagation();">⠿</span>';
@@ -2390,6 +3629,7 @@ function renderEditor() {
         h += '      </div>';
         h += '    </div>';
         h += '    <div style="display:flex; align-items:center; gap:8px;">';
+        h += '      ' + hideToggleHtml('projects', proj);
         h += '      <span style="font-size:11.5px; font-weight:600; color:' + (isEdP ? 'var(--ui-color-accent)' : 'var(--ui-color-text-muted)') + ';">' + (isEdP ? '▲ Einklappen' : '▼ Bearbeiten') + '</span>';
         h += '    </div>';
         h += '  </div>';
@@ -2421,7 +3661,7 @@ function renderEditor() {
         var vol = cvData.volunteer[vi];
         var isEdV = editingVol === vol.id;
 
-        h += '<div class="ic wide-card' + (isEdV ? ' ed' : '') + '" draggable="false" ondragstart="onDragStart(\'volunteer\',' + vi + ',event)" ondragover="onDragOver(event)" ondragenter="onDragEnter(event)" ondragend="onDragEnd()" ondrop="onDrop(\'volunteer\',' + vi + ',event)">';
+        h += '<div class="ic wide-card' + (isEdV ? ' ed' : '') + '' + (vol.hidden ? ' is-hidden' : '') + '" draggable="false" ondragstart="onDragStart(\'volunteer\',' + vi + ',event)" ondragover="onDragOver(event)" ondragenter="onDragEnter(event)" ondragend="onDragEnd()" ondrop="onDrop(\'volunteer\',' + vi + ',event)">';
         h += '  <div class="wide-card-h" onclick="toggleVolEdit(' + vol.id + ')">';
         h += '    <div style="display:flex; align-items:center; gap:10px; flex:1; min-width:0;">';
         h += '      <span class="drag-handle" tabindex="0" onmousedown="enableDrag(event); event.stopPropagation();" onmouseup="disableDrag(event)" ontouchstart="enableDrag(event); event.stopPropagation();" ontouchend="disableDrag(event)" onkeydown="handleKeyboardReorder(\'volunteer\',' + vi + ',event); event.stopPropagation();" onclick="event.stopPropagation();">⠿</span>';
@@ -2431,6 +3671,7 @@ function renderEditor() {
         h += '      </div>';
         h += '    </div>';
         h += '    <div style="display:flex; align-items:center; gap:8px;">';
+        h += '      ' + hideToggleHtml('volunteer', vol);
         h += '      <span style="font-size:11.5px; font-weight:600; color:' + (isEdV ? 'var(--ui-color-accent)' : 'var(--ui-color-text-muted)') + ';">' + (isEdV ? '▲ Einklappen' : '▼ Bearbeiten') + '</span>';
         h += '    </div>';
         h += '  </div>';
@@ -2452,6 +3693,35 @@ function renderEditor() {
     }
   }
   h += closeFokusSec('projects');
+
+  // ── Sektion: Anschreiben ──
+  var isLetterOpen = focusedSection === 'letter';
+  var letterData = cvData.letter;
+  var letterSummary = letterData.subject.trim() || 'Empfänger, Betreff und Text';
+  h += renderFokusHeader('letter', '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>', 'Anschreiben', null, letterSummary);
+  if (isLetterOpen) {
+    h += '<div class="wide-card">';
+    h += '  <div class="wide-card-h" style="cursor:default;"><div><div class="wide-card-t">Empfänger &amp; Betreff</div><div class="wide-card-s">Absender, Ort, Datum und Unterschrift kommen aus „Persönliche Daten“.</div></div></div>';
+    h += '  <div class="wide-card-b">';
+    h += '    <div class="grid-2-eq">';
+    h += '      <div class="fld"><label>Empfänger</label><textarea style="min-height:96px;" oninput="updateLetter(\'recipient\',this.value)" placeholder="Firma&#10;Ansprechperson&#10;Straße Nr.&#10;PLZ Ort">' + esc(letterData.recipient) + '</textarea><div class="fld-hint">Eine Zeile pro Angabe</div></div>';
+    h += '      <div class="fld"><label>Betreff</label><input value="' + escAttr(letterData.subject) + '" oninput="updateLetter(\'subject\',this.value)" placeholder="z.B. Bewerbung als Projektleitung Einkauf"><div class="fld-hint">Ohne das Wort „Betreff“; wird fett gesetzt</div></div>';
+    h += '    </div>';
+    h += '  </div>';
+    h += '</div>';
+    h += '<div class="wide-card">';
+    h += '  <div class="wide-card-h" style="cursor:default;"><div class="wide-card-t">Text</div></div>';
+    h += '  <div class="wide-card-b">';
+    h += '    <div class="fld"><label>Anrede</label><input value="' + escAttr(letterData.salutation) + '" oninput="updateLetter(\'salutation\',this.value)" placeholder="' + escAttr(t('letter_salutation')) + '"><div class="fld-hint">Leer lassen für die Standardanrede</div></div>';
+    h += '    <div class="fld"><label>Brieftext</label><textarea style="min-height:220px; font-size:12.5px; line-height:1.55;" oninput="updateLetter(\'body\',this.value)">' + esc(letterData.body) + '</textarea><div class="fld-hint">Absätze durch eine Leerzeile trennen. Das Anschreiben sollte auf eine Seite passen.</div></div>';
+    h += '    <div class="grid-2-eq">';
+    h += '      <div class="fld"><label>Grußformel</label><input value="' + escAttr(letterData.closing) + '" oninput="updateLetter(\'closing\',this.value)" placeholder="' + escAttr(t('letter_closing')) + '"><div class="fld-hint">Leer lassen für die Standardformel</div></div>';
+    h += '      <div class="fld"><label>Anlagen</label><textarea style="min-height:60px;" oninput="updateLetter(\'enclosures\',this.value)" placeholder="Lebenslauf&#10;Zeugnisse">' + esc(letterData.enclosures) + '</textarea><div class="fld-hint">Eine Anlage pro Zeile; leer lassen für keine</div></div>';
+    h += '    </div>';
+    h += '  </div>';
+    h += '</div>';
+  }
+  h += closeFokusSec('letter');
 
   // ── Sektion 7: Design & Dokumentensprache ──
   var isStyleOpen = focusedSection === 'style';
@@ -2563,6 +3833,7 @@ function saveToLocalStorage() {
     var stateStr = JSON.stringify(dataToSave);
     localStorage.setItem('cv_builder_autosave', stateStr);
     showAutosaveStatus();
+    updateBackupReminder(stateStr);
     
     // Auto-push history state if not currently performing undo/redo
     if (!isApplyingHistory) {
@@ -2578,6 +3849,53 @@ function saveToLocalStorage() {
   } catch (err) {
     console.error('Error autosaving:', err);
   }
+}
+
+// Der Entwurf liegt nur im Browser. Gibt es Änderungen seit der letzten
+// Datei-Sicherung ("Speichern" oder Laden einer Datei) und liegt diese mindestens
+// 7 Tage zurück, erscheint oben ein Hinweis; ein Klick darauf speichert. Ohne
+// jede Sicherung zählt die Zeit ab dem ersten Entwurf in diesem Browser.
+var BACKUP_REMIND_DAYS = 7;
+
+function backupHash(str) {
+  var h = 5381;
+  for (var i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) | 0;
+  return str.length + ':' + h;
+}
+
+function currentStateString() {
+  return JSON.stringify({ cvData: cvData, currentLayout: currentLayout, grouping: grouping, customStyle: customStyle, outputLang: outputLang });
+}
+
+function readBackupInfo() {
+  try {
+    var v = JSON.parse(localStorage.getItem('cv_backup') || 'null');
+    return v && typeof v === 'object' && typeof v.at === 'number' ? v : null;
+  } catch (e) { return null; }
+}
+
+function markBackup() {
+  try { localStorage.setItem('cv_backup', JSON.stringify({ at: Date.now(), hash: backupHash(currentStateString()) })); } catch (e) {}
+  updateBackupReminder();
+}
+
+function updateBackupReminder(stateStr) {
+  var el = document.getElementById('backup-reminder');
+  if (!el) return;
+  var info = readBackupInfo();
+  var now = Date.now();
+  if (info && info.hash === backupHash(stateStr || currentStateString())) { el.style.display = 'none'; return; }
+  var since = info ? info.at : 0;
+  if (!info) {
+    try {
+      since = parseInt(localStorage.getItem('cv_backup_since'), 10) || 0;
+      if (!since) { since = now; localStorage.setItem('cv_backup_since', String(now)); }
+    } catch (e) { since = now; }
+  }
+  var days = Math.floor((now - since) / 86400000);
+  if (days < BACKUP_REMIND_DAYS) { el.style.display = 'none'; return; }
+  el.textContent = info ? 'Datei-Sicherung vor ' + days + ' Tagen' : 'Noch nie als Datei gesichert';
+  el.style.display = '';
 }
 
 function showAutosaveStatus() {

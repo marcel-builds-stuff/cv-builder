@@ -7,6 +7,12 @@
     accent: "#0d9488",
 
     css: `
+      /* ── Anschreiben: Briefkopf im Farbband, Name links, Absender rechts ── */
+      .cv-root .cv-med-header.cv-med-lh { display: block; padding: 22px 20mm 18px 25mm; }
+      .cv-root .cv-med-lh .cv-header-title { margin-bottom: 0; }
+      .cv-root .cv-med-lh .cv-lh-sender { color: rgba(255, 255, 255, 0.92); }
+      .cv-root .cv-med-lh .cv-lh-ico { color: rgba(255, 255, 255, 0.75); }
+
       .cv-root {
         font-family: 'Roboto', 'Segoe UI', 'Calibri', sans-serif;
         font-size: 9.5px;
@@ -46,7 +52,7 @@
         font-weight: 400;
         letter-spacing: 1px;
         text-transform: uppercase;
-        opacity: 0.9;
+        color: rgba(255, 255, 255, 0.9); /* statt opacity: würde den Titel im PDF ans Seitenende verschieben */
         margin-bottom: 12px;
       }
 
@@ -203,6 +209,15 @@
       .cv-sig-location { font-size: 9.5px; color: #555; margin-bottom: 4px; }
       .cv-sig-img { max-height: 40px; max-width: 160px; }
     `,
+
+    // Briefkopf des Anschreibens: Farbband, Name und Titel links, Absender rechts
+    renderLetterHead: function (data, h) {
+      var p = data.personal || {};
+      var out = '<div class="cv-med-header cv-med-lh"><div class="cv-lh"><div class="cv-lh-main">';
+      out += '<h1 class="cv-header-name">' + h.esc(h.displayName(p.name)) + '</h1>';
+      if (p.title && p.title.trim()) out += '<div class="cv-header-title">' + h.esc(p.title.trim()) + '</div>';
+      return out + '</div>' + h.letterSender(data, true) + '</div></div>';
+    },
 
     render: function (data, grouping, h) {
       var out = "";
